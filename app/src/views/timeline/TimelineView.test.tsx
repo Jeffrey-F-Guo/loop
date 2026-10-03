@@ -1,7 +1,9 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createFakeApi, makeItem } from '../../test/fakeApi';
+import { qk } from '../../api/keys';
+import { useDragStore } from '../../dnd/dragStore';
+import { createFakeApi, makeBlock, makeItem } from '../../test/fakeApi';
 import { renderWithProviders } from '../../test/render';
 import { TimelineView } from './TimelineView';
 
@@ -77,5 +79,31 @@ describe('TimelineView', () => {
     fireEvent.pointerUp(window, { clientX: 460, pointerId: 1 });
     await new Promise((r) => setTimeout(r, 20));
     expect(lastPatch(api)).toBeUndefined();
+  });
+
+  it("an edge drag never strands the item's scheduled blocks, even ones the Calendar hasn't loaded", async () => {
+    const api = createFakeApi({
+      items: [ranged()],
+      blocks: [makeBlock({ id: 'b1', item_id: 'i1', start_at: local(7, 19), end_at: local(7, 20) })], // Wed
+    });
+    const { qc } = renderWithProviders(view, { api });
+    const handle = await screen.findByTestId('timeline-bar-right-i1');
+    fireEvent.pointerDown(handle, { clientX: 450, pointerId: 1 });
+    await waitFor(() => expect(qc.getQueryData(qk.workBlocksItem('i1'))).toBeDefined()); // fetched on grab
+    fireEvent.pointerUp(window, { clientX: 50, pointerId: 1 }); // released over Monday
+    await waitFor(() => expect(lastPatch(api)?.body).toEqual({ deadline_at: local(7, 23, 59) }));
+  });
+
+  it('the bar follows the pointer by whole days while being moved', async () => {
+    renderWithProviders(view, { api: createFakeApi({ items: [ranged()] }) });
+    const bar = await screen.findByTestId('timeline-bar-i1');
+    act(() => {
+      useDragStore.getState().begin({ payload: { kind: 'timelineBar', itemId: 'i1' }, pointerStart: { x: 150, y: 10 }, activeInitialRect: null });
+      useDragStore.getState().move({ x: 360, y: 10 }); // +2.1 columns of 100px
+    });
+    await waitFor(() => expect(bar).toHaveAttribute('data-preview-shift', '2'));
+    act(() => useDragStore.getState().move({ x: 360, y: 900 })); // left the Timeline (e.g. toward the Calendar)
+    await waitFor(() => expect(bar).not.toHaveAttribute('data-preview-shift'));
+    act(() => useDragStore.getState().end());
   });
 });

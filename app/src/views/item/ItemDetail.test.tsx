@@ -59,6 +59,14 @@ describe('ItemDetail', () => {
     expect(lastPatch(api)).toBeUndefined();
   });
 
+  it('refuses a deadline that would leave a scheduled block outside the range', async () => {
+    const { api } = setup({ open_at: local(5), deadline_at: local(9, 23, 59) }); // block b1 is Tue 7 PM
+    await screen.findByTestId('item-block-b1');
+    fireEvent.change(screen.getByTestId('item-deadline-date'), { target: { value: '2026-10-05' } });
+    expect(await screen.findByTestId('item-date-error')).toHaveTextContent('A scheduled block falls outside these dates');
+    expect(lastPatch(api)).toBeUndefined();
+  });
+
   it('clearing the deadline sends null', async () => {
     const { api } = setup({ deadline_at: local(9, 23, 59) });
     fireEvent.change(await screen.findByTestId('item-deadline-date'), { target: { value: '' } });

@@ -114,11 +114,24 @@ export function DndProvider({ children, onDock }: { children: ReactNode; onDock?
   );
 }
 
+/** True while a Timeline bar is over a Timeline's day area, where the bar itself slides as the preview. */
+const useBarPreviewingInPlace = () =>
+  useDragStore((s) => {
+    if (s.payload?.kind !== 'timelineBar' || typeof document === 'undefined') return false;
+    // Geometric test: the overlay itself sits under the pointer, so elementFromPoint would hit it.
+    const { x, y } = s.pointer;
+    return [...document.querySelectorAll('[data-role="timeline-days"]')].some((el) => {
+      const r = el.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    });
+  });
+
 function DragChip() {
   const payload = useDragStore((s) => s.payload);
   const items = useItemsById();
   const qc = useQueryClient();
-  if (!payload) return null;
+  const hidden = useBarPreviewingInPlace();
+  if (!payload || hidden) return null;
   let label = 'View';
   if (payload.kind === 'item' || payload.kind === 'timelineBar') label = items.get(payload.itemId)?.title ?? '';
   if (payload.kind === 'workBlock') {
@@ -127,6 +140,7 @@ function DragChip() {
   }
   return (
     <div
+      data-testid="drag-chip"
       style={{
         display: 'inline-block', maxWidth: 260, padding: '6px 10px', borderRadius: tokens.radius.md,
         background: tokens.color.panel, boxShadow: tokens.shadow.drag, border: `1px solid ${tokens.color.border}`,

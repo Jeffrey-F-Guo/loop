@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { REVERTED_MESSAGE, showToast } from '../ui/toastStore';
 import { useApi } from './ApiProvider';
 import { collectBlocks, removeBlocksFromCaches, restoreBlocks, snapshotBlocks, upsertBlockInCaches } from './blockCache';
+import type { ApiClient } from './client';
 import { qk } from './keys';
 import type { CreateWorkBlockInput, Item, UpdateWorkBlockInput, WorkBlock, WorkBlocksResponse } from './types';
 
@@ -16,13 +17,15 @@ export function useWorkBlocks({ start, end }: { start: Date; end: Date }) {
   });
 }
 
+/** All of one item's work blocks (any week). Shared by the item popover and Timeline edge drags. */
+export const itemBlocksQuery = (api: ApiClient, itemId: string) => ({
+  queryKey: qk.workBlocksItem(itemId),
+  queryFn: async () => (await api.request<WorkBlocksResponse>('GET', `/work-blocks?item_id=${itemId}`)).work_blocks,
+});
+
 export function useItemWorkBlocks(itemId: string | null) {
   const api = useApi();
-  return useQuery({
-    queryKey: qk.workBlocksItem(itemId ?? ''),
-    enabled: !!itemId && !itemId.startsWith('tmp-'),
-    queryFn: async () => (await api.request<WorkBlocksResponse>('GET', `/work-blocks?item_id=${itemId}`)).work_blocks,
-  });
+  return useQuery({ ...itemBlocksQuery(api, itemId ?? ''), enabled: !!itemId && !itemId.startsWith('tmp-') });
 }
 
 function bumpCount(qc: ReturnType<typeof useQueryClient>, itemId: string, delta: number) {

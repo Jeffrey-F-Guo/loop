@@ -43,6 +43,13 @@ export function ItemDetail({ item, onClose }: { item: Item; onClose: () => void 
       setDateError('Open date must be on or before the deadline');
       return false;
     }
+    // Same rule the API enforces: every work block stays inside [open, deadline].
+    const strands = (blocks.data ?? []).some((b) =>
+      (open && Date.parse(b.start_at) < Date.parse(open)) || (deadline && Date.parse(b.end_at) > Date.parse(deadline)));
+    if (strands) {
+      setDateError('A scheduled block falls outside these dates — move or remove it first');
+      return false;
+    }
     setDateError(null);
     return true;
   };
