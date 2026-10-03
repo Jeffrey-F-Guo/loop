@@ -53,6 +53,15 @@ func buildAuthenticator(ctx context.Context, cfg config) (auth.Authenticator, er
 			return nil, errors.New("AUTH_MODE=dev is not allowed when APP_ENV=production")
 		}
 		return auth.DevAuth{}, nil
+	case "supabase":
+		if cfg.SupabaseURL == "" {
+			return nil, errors.New("SUPABASE_URL is required when AUTH_MODE=supabase")
+		}
+		jwks := cfg.SupabaseJWKSURL
+		if jwks == "" {
+			jwks = strings.TrimRight(cfg.SupabaseURL, "/") + "/auth/v1/.well-known/jwks.json"
+		}
+		return auth.NewSupabaseJWT(ctx, jwks, cfg.SupabaseURL)
 	default:
 		return nil, fmt.Errorf("unsupported AUTH_MODE %q", cfg.AuthMode)
 	}
