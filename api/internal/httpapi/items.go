@@ -93,8 +93,8 @@ func (s *Server) patchItem(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	it, err := s.store.UpdateItem(r.Context(), userOf(r), id, func(cur domain.Item) (domain.Item, error) {
-		return domain.ApplyItemPatch(cur, p, s.now())
+	it, err := s.store.UpdateItemAndBlocks(r.Context(), userOf(r), id, func(cur domain.Item, blocks []domain.WorkBlock) (domain.Item, []domain.WorkBlock, error) {
+		return domain.ApplyItemPatchWithBlocks(cur, blocks, p, s.now())
 	})
 	if err != nil {
 		s.fail(w, r, err)

@@ -28,6 +28,10 @@ export type UpdateItemInput = Partial<{
   open_at: string | null;
   deadline_at: string | null;
   status: ItemStatus;
+  /** Move open_at, deadline_at and all of the item's work blocks by whole days in time_zone. */
+  shift_days: number;
+  /** IANA zone; required with shift_days. */
+  time_zone: string;
 }>;
 
 export interface WorkBlock {

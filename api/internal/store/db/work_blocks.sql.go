@@ -135,6 +135,43 @@ func (q *Queries) ListWorkBlocks(ctx context.Context, arg ListWorkBlocksParams) 
 	return items, nil
 }
 
+const lockItemWorkBlocks = `-- name: LockItemWorkBlocks :many
+SELECT id, user_id, item_id, start_at, end_at, created_at, updated_at FROM work_blocks WHERE item_id = $1 AND user_id = $2 ORDER BY start_at, id FOR UPDATE
+`
+
+type LockItemWorkBlocksParams struct {
+	ItemID uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) LockItemWorkBlocks(ctx context.Context, arg LockItemWorkBlocksParams) ([]WorkBlock, error) {
+	rows, err := q.db.Query(ctx, lockItemWorkBlocks, arg.ItemID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkBlock
+	for rows.Next() {
+		var i WorkBlock
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ItemID,
+			&i.StartAt,
+			&i.EndAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockWorkBlock = `-- name: LockWorkBlock :one
 SELECT id, user_id, item_id, start_at, end_at, created_at, updated_at FROM work_blocks WHERE id = $1 AND user_id = $2 FOR UPDATE
 `

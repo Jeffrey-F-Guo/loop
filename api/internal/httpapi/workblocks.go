@@ -29,6 +29,15 @@ func (s *Server) createWorkBlock(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	it, err := s.store.GetItem(r.Context(), userOf(r), in.ItemID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if err := domain.CheckBlockInItem(it, in.StartAt, in.EndAt); err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	b, err := s.store.CreateWorkBlock(r.Context(), userOf(r), in)
 	if err != nil {
 		s.fail(w, r, err)
@@ -111,7 +120,15 @@ func (s *Server) patchWorkBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b, err := s.store.UpdateWorkBlock(r.Context(), userOf(r), id, func(cur domain.WorkBlock) (domain.WorkBlock, error) {
-		return domain.ApplyWorkBlockPatch(cur, p)
+		next, err := domain.ApplyWorkBlockPatch(cur, p)
+		if err != nil {
+			return cur, err
+		}
+		it, err := s.store.GetItem(r.Context(), userOf(r), cur.ItemID)
+		if err != nil {
+			return cur, err
+		}
+		return next, domain.CheckBlockInItem(it, next.StartAt, next.EndAt)
 	})
 	if err != nil {
 		s.fail(w, r, err)

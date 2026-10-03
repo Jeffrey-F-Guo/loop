@@ -48,6 +48,9 @@ paths:
         Partial update. Absent fields are untouched; explicit null clears nullable fields.
         status=completed sets completed_at=now (unless already completed); status=active clears completed_at.
         open_at <= deadline_at is validated on the merged result.
+        shift_days (with time_zone, an IANA zone) moves open_at, deadline_at, and every work block of the
+        item by whole local calendar days in one transaction; it cannot be combined with open_at/deadline_at.
+        A change to the dates that would leave any work block outside [open_at, deadline_at] is refused (400).
       requestBody:
         required: true
         content:
@@ -66,6 +69,7 @@ paths:
   /work-blocks:
     post:
       operationId: createWorkBlock
+      description: The block must lie within its item's [open_at, deadline_at] (missing dates do not constrain); otherwise 400.
       requestBody:
         required: true
         content:
@@ -101,6 +105,7 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
     patch:
       operationId: updateWorkBlock
+      description: The merged block must still lie within its item's [open_at, deadline_at]; otherwise 400.
       requestBody:
         required: true
         content:
@@ -189,6 +194,8 @@ components:
         open_at: { type: [string, 'null'], format: date-time }
         deadline_at: { type: [string, 'null'], format: date-time }
         status: { type: string, enum: [active, completed] }
+        shift_days: { type: integer }
+        time_zone: { type: string, description: 'IANA zone, required with shift_days' }
     WorkBlock:
       type: object
       required: [id, item_id, start_at, end_at, created_at, updated_at]

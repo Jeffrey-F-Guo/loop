@@ -44,6 +44,10 @@ type ItemPatch struct {
 	OpenAt      Opt[time.Time]  `json:"open_at"`
 	DeadlineAt  Opt[time.Time]  `json:"deadline_at"`
 	Status      Opt[ItemStatus] `json:"status"`
+	// ShiftDays moves open_at, deadline_at, and every work block of the item by whole
+	// calendar days in TimeZone (DST-safe). See ApplyItemPatchWithBlocks.
+	ShiftDays Opt[int]    `json:"shift_days"`
+	TimeZone  Opt[string] `json:"time_zone"`
 }
 
 func NormalizeTitle(s string) (string, error) {

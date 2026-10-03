@@ -130,6 +130,16 @@ func (s *Store) ListItems(ctx context.Context, userID uuid.UUID, f ItemFilter) (
 // UpdateItem locks the row, applies the caller's change (which validates the
 // merged result), and writes it back in one transaction.
 func (s *Store) UpdateItem(ctx context.Context, userID, id uuid.UUID, apply func(domain.Item) (domain.Item, error)) (domain.Item, error) {
+	return s.UpdateItemAndBlocks(ctx, userID, id, func(it domain.Item, blocks []domain.WorkBlock) (domain.Item, []domain.WorkBlock, error) {
+		next, err := apply(it)
+		return next, blocks, err
+	})
+}
+
+// UpdateItemAndBlocks locks the item and all of its work blocks, lets the caller
+// change both (validating them together), and writes every changed row back in
+// one transaction. Blocks returned by apply must be the ones it was given.
+func (s *Store) UpdateItemAndBlocks(ctx context.Context, userID, id uuid.UUID, apply func(domain.Item, []domain.WorkBlock) (domain.Item, []domain.WorkBlock, error)) (domain.Item, error) {
 	var out domain.Item
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
@@ -137,9 +147,25 @@ func (s *Store) UpdateItem(ctx context.Context, userID, id uuid.UUID, apply func
 		if err != nil {
 			return mapErr(err)
 		}
-		next, err := apply(itemFrom(cur, 0))
+		rows, err := q.LockItemWorkBlocks(ctx, db.LockItemWorkBlocksParams{ItemID: id, UserID: userID})
 		if err != nil {
 			return err
+		}
+		blocks := make([]domain.WorkBlock, len(rows))
+		for i, r := range rows {
+			blocks[i] = blockFrom(r)
+		}
+		next, nextBlocks, err := apply(itemFrom(cur, 0), blocks)
+		if err != nil {
+			return err
+		}
+		for i, b := range nextBlocks {
+			if b.StartAt.Equal(blocks[i].StartAt) && b.EndAt.Equal(blocks[i].EndAt) {
+				continue
+			}
+			if _, err := q.UpdateWorkBlock(ctx, db.UpdateWorkBlockParams{ID: b.ID, UserID: userID, StartAt: b.StartAt, EndAt: b.EndAt}); err != nil {
+				return mapErr(err)
+			}
 		}
 		row, err := q.UpdateItem(ctx, db.UpdateItemParams{
 			ID: id, UserID: userID, Title: next.Title, Description: next.Description,
