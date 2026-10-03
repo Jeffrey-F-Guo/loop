@@ -1,0 +1,278 @@
+openapi: 3.1.0
+info:
+  title: Personal Sprint Planner API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080/api/v1
+security:
+  - bearer: []
+  - devUser: []
+paths:
+  /items:
+    post:
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateItemInput' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Item' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+    get:
+      operationId: listItems
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [active, completed, all], default: active } }
+        - { name: scheduling, in: query, schema: { type: string, enum: [all, scheduled, unscheduled], default: all } }
+      responses:
+        '200':
+          description: OK (ordered by created_at DESC)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties: { items: { type: array, items: { $ref: '#/components/schemas/Item' } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /items/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      operationId: getItem
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Item' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateItem
+      description: >
+        Partial update. Absent fields are untouched; explicit null clears nullable fields.
+        status=completed sets completed_at=now (unless already completed); status=active clears completed_at.
+        open_at <= deadline_at is validated on the merged result.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateItemInput' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Item' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteItem
+      description: Deletes the item and all of its work blocks.
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/Error' }
+  /work-blocks:
+    post:
+      operationId: createWorkBlock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateWorkBlockInput' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/WorkBlock' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { description: Item not found or not owned, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    get:
+      operationId: listWorkBlocks
+      description: Requires start+end (blocks overlapping [start, end)), item_id, or both.
+      parameters:
+        - { name: start, in: query, schema: { type: string, format: date-time } }
+        - { name: end, in: query, schema: { type: string, format: date-time } }
+        - { name: item_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK (ordered by start_at)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [work_blocks]
+                properties: { work_blocks: { type: array, items: { $ref: '#/components/schemas/WorkBlock' } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /work-blocks/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      operationId: getWorkBlock
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkBlock' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateWorkBlock
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateWorkBlockInput' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorkBlock' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteWorkBlock
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/Error' }
+  /workspace:
+    get:
+      operationId: getWorkspace
+      description: Returns the user's layout, creating the default layout on first access.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Workspace' } } } }
+    put:
+      operationId: putWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [layout]
+              additionalProperties: false
+              properties: { layout: { $ref: '#/components/schemas/Layout' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Workspace' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+    devUser: { type: apiKey, in: header, name: X-Dev-User, description: AUTH_MODE=dev only }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    Error:
+      description: Error
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [validation_failed, unauthorized, not_found, internal] }
+            message: { type: string }
+            field: { type: string }
+    Item:
+      type: object
+      required: [id, title, description, open_at, deadline_at, status, work_block_count, created_at, updated_at, completed_at]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 500 }
+        description: { type: [string, 'null'] }
+        open_at: { type: [string, 'null'], format: date-time }
+        deadline_at: { type: [string, 'null'], format: date-time }
+        status: { type: string, enum: [active, completed] }
+        work_block_count: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        completed_at: { type: [string, 'null'], format: date-time }
+    CreateItemInput:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        open_at: { type: [string, 'null'], format: date-time }
+        deadline_at: { type: [string, 'null'], format: date-time }
+    UpdateItemInput:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        open_at: { type: [string, 'null'], format: date-time }
+        deadline_at: { type: [string, 'null'], format: date-time }
+        status: { type: string, enum: [active, completed] }
+    WorkBlock:
+      type: object
+      required: [id, item_id, start_at, end_at, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        item_id: { type: string, format: uuid }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateWorkBlockInput:
+      type: object
+      required: [item_id, start_at, end_at]
+      additionalProperties: false
+      properties:
+        item_id: { type: string, format: uuid }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time, description: 'end_at - start_at >= 15 minutes' }
+    UpdateWorkBlockInput:
+      type: object
+      additionalProperties: false
+      properties:
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+    Workspace:
+      type: object
+      required: [layout, updated_at]
+      properties:
+        layout: { $ref: '#/components/schemas/Layout' }
+        updated_at: { type: string, format: date-time }
+    Layout:
+      type: object
+      required: [version, root]
+      additionalProperties: false
+      properties:
+        version: { const: 1 }
+        root: { oneOf: [{ $ref: '#/components/schemas/LayoutNode' }, { type: 'null' }] }
+    LayoutNode:
+      oneOf:
+        - $ref: '#/components/schemas/SplitNode'
+        - $ref: '#/components/schemas/ViewNode'
+      discriminator: { propertyName: kind }
+    SplitNode:
+      type: object
+      required: [kind, id, direction, children, sizes]
+      additionalProperties: false
+      properties:
+        kind: { const: split }
+        id: { type: string, minLength: 1 }
+        direction: { type: string, enum: [row, column] }
+        children: { type: array, minItems: 2, items: { $ref: '#/components/schemas/LayoutNode' } }
+        sizes: { type: array, items: { type: number, exclusiveMinimum: 0 } }
+    ViewNode:
+      type: object
+      required: [kind, id, view]
+      additionalProperties: false
+      properties:
+        kind: { const: view }
+        id: { type: string, minLength: 1 }
+        view:
+          oneOf:
+            - type: object
+              required: [type, config]
+              additionalProperties: false
+              properties:
+                type: { const: dropbox }
+                config:
+                  type: object
+                  required: [filter]
+                  additionalProperties: false
+                  properties: { filter: { type: string, enum: [all, scheduled, unscheduled, completed] } }
+            - type: object
+              required: [type, config]
+              additionalProperties: false
+              properties:
+                type: { const: timeline }
+                config: { type: object, additionalProperties: false }
+            - type: object
+              required: [type, config]
+              additionalProperties: false
+              properties:
+                type: { const: calendar }
+                config:
+                  type: object
+                  required: [mode]
+                  additionalProperties: false
+                  properties: { mode: { type: string, enum: [week, day] } }
