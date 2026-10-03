@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import { shiftDays } from '../domain/time';
+import { shiftItemDays } from '../domain/timeline';
 import { REVERTED_MESSAGE, showToast } from '../ui/toastStore';
 import { useApi } from './ApiProvider';
-import { removeBlocksFromCaches, restoreBlocks, snapshotBlocks } from './blockCache';
+import { collectBlocks, removeBlocksFromCaches, restoreBlocks, snapshotBlocks, upsertBlockInCaches } from './blockCache';
 import { qk } from './keys';
 import type { CreateItemInput, Item, ItemsResponse, UpdateItemInput } from './types';
 
@@ -74,6 +76,40 @@ export function useUpdateItem() {
     onError: (_e, { id }, ctx) => {
       const before = ctx?.prev?.find((i) => i.id === id);
       if (before) qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === id ? before : i)));
+      showToast(REVERTED_MESSAGE);
+    },
+  });
+}
+
+/**
+ * Moves an item's dates and all of its work blocks by whole local days in one request
+ * (Timeline bar drag). Cached blocks move immediately; the server shifts the rest.
+ */
+export function useShiftItem() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ['items', 'shift'],
+    mutationFn: ({ id, days }: { id: string; days: number }) =>
+      api.request<Item>('PATCH', `/items/${id}`, { shift_days: days, time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+    onMutate: async ({ id, days }) => {
+      await Promise.all([qc.cancelQueries({ queryKey: qk.items }), qc.cancelQueries({ queryKey: qk.workBlocks })]);
+      const prevItem = qc.getQueryData<Item[]>(qk.items)?.find((i) => i.id === id);
+      const prevBlocks = [...collectBlocks(qc).values()].filter((b) => b.item_id === id);
+      qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === id ? { ...i, ...shiftItemDays(i, days) } : i)));
+      for (const b of prevBlocks) {
+        upsertBlockInCaches(qc, {
+          ...b,
+          start_at: shiftDays(new Date(b.start_at), days).toISOString(),
+          end_at: shiftDays(new Date(b.end_at), days).toISOString(),
+        });
+      }
+      return { prevItem, prevBlocks };
+    },
+    onSuccess: (item) => qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === item.id ? item : i))),
+    onError: (_e, { id }, ctx) => {
+      if (ctx?.prevItem) qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === id ? ctx.prevItem! : i)));
+      ctx?.prevBlocks.forEach((b) => upsertBlockInCaches(qc, b));
       showToast(REVERTED_MESSAGE);
     },
   });

@@ -5,7 +5,7 @@ import type { Item, WorkBlock } from '../../api/types';
 import { useUpdateWorkBlock } from '../../api/workBlocks';
 import { useTypedDraggable } from '../../dnd/hooks';
 import { toRect } from '../../dnd/types';
-import { HOUR_PX, MIN_BLOCK_MINUTES, MINUTES_PER_DAY, atMinutes, clamp, minutesSinceMidnight, roundTo15, toLocalStamp } from '../../domain/time';
+import { HOUR_PX, MIN_BLOCK_MINUTES, MINUTES_PER_DAY, atMinutes, clamp, minutesSinceMidnight, roundTo15, snapDown15, toDateKey, toLocalStamp } from '../../domain/time';
 import { useItemDetailStore } from '../../ui/itemDetailStore';
 import { tokens } from '../../ui/tokens';
 
@@ -35,8 +35,13 @@ export function BlockView({ block, item, viewId, lane, lanes }: {
     e.stopPropagation();
     e.preventDefault();
     const top = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect().top;
+    // A block may not run past its item's deadline (when the deadline falls on this day).
+    const deadline = item?.deadline_at ? new Date(item.deadline_at) : null;
+    const maxEnd = deadline && toDateKey(deadline) === toDateKey(start)
+      ? Math.max(startMin + MIN_BLOCK_MINUTES, snapDown15(minutesSinceMidnight(deadline)))
+      : MINUTES_PER_DAY;
     const endAt = (clientY: number) =>
-      clamp(roundTo15(startMin + ((clientY - top) / HOUR_PX) * 60), startMin + MIN_BLOCK_MINUTES, MINUTES_PER_DAY);
+      clamp(roundTo15(startMin + ((clientY - top) / HOUR_PX) * 60), startMin + MIN_BLOCK_MINUTES, maxEnd);
     const onMove = (ev: PointerEvent) => setPreviewEnd(endAt(ev.clientY));
     const onUp = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', onMove);

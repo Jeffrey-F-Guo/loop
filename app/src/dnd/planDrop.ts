@@ -1,8 +1,9 @@
 import type { Item, WorkBlock } from '../api/types';
+import { constrainStart } from '../domain/range';
 import {
-  DEFAULT_BLOCK_MINUTES, HOUR_PX, MINUTES_PER_DAY, atMinutes, clamp, fromDateKey, roundTo15, snapDown15,
+  DEFAULT_BLOCK_MINUTES, HOUR_PX, MINUTES_PER_DAY, atMinutes, daysBetween, fromDateKey, roundTo15, snapDown15, startOfDayLocal,
 } from '../domain/time';
-import { placeOnDay, shiftItemDays } from '../domain/timeline';
+import { placeOnDay } from '../domain/timeline';
 import { ACCEPTS, type DragPayload, type DropAction, type DropData, type Point, type Rect } from './types';
 
 export interface DropContext {
@@ -15,6 +16,7 @@ export interface DropContext {
 }
 
 const NONE: DropAction = { type: 'none' };
+const UNDATED = { open_at: null, deadline_at: null };
 const pxToMinutes = (px: number) => (px / HOUR_PX) * 60;
 const iso = (d: Date) => d.toISOString();
 const addMinutes = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
@@ -32,9 +34,12 @@ export function planDrop(payload: DragPayload, drop: DropData, ctx: DropContext)
   const pointerMinutes = pxToMinutes(ctx.pointerEnd.y - ctx.dropRect.top);
 
   if (drop.kind === 'calendarDay') {
+    // Blocks must fit inside the item's [open_at, deadline_at]; outside days get no action (and no preview).
     if (payload.kind === 'item' || payload.kind === 'timelineBar') {
-      if (!ctx.items.has(payload.itemId)) return NONE;
-      const minutes = clamp(snapDown15(pointerMinutes), 0, MINUTES_PER_DAY - DEFAULT_BLOCK_MINUTES);
+      const item = ctx.items.get(payload.itemId);
+      if (!item) return NONE;
+      const minutes = constrainStart(item, day, snapDown15(pointerMinutes), DEFAULT_BLOCK_MINUTES);
+      if (minutes === null) return NONE;
       const start = atMinutes(day, minutes);
       return { type: 'createBlock', itemId: payload.itemId, startAt: iso(start), endAt: iso(addMinutes(start, DEFAULT_BLOCK_MINUTES)) };
     }
@@ -43,21 +48,24 @@ export function planDrop(payload: DragPayload, drop: DropData, ctx: DropContext)
       if (!block) return NONE;
       const duration = Math.round((Date.parse(block.end_at) - Date.parse(block.start_at)) / 60_000);
       const grab = ctx.activeInitialRect ? pxToMinutes(ctx.pointerStart.y - ctx.activeInitialRect.top) : 0;
-      const minutes = clamp(roundTo15(pointerMinutes - grab), 0, Math.max(0, MINUTES_PER_DAY - duration));
+      const item = ctx.items.get(block.item_id) ?? UNDATED;
+      const minutes = constrainStart(item, day, roundTo15(pointerMinutes - grab), Math.min(duration, MINUTES_PER_DAY));
+      if (minutes === null) return NONE;
       const start = atMinutes(day, minutes);
       return { type: 'moveBlock', blockId: block.id, startAt: iso(start), endAt: iso(addMinutes(start, duration)) };
     }
     return NONE;
   }
 
-  // timelineDay
+  // timelineDay: moving a dated range moves its work blocks too (shiftItem).
   if (payload.kind === 'item' || payload.kind === 'timelineBar') {
     const item = ctx.items.get(payload.itemId);
     if (!item) return NONE;
-    if (payload.kind === 'item') return { type: 'updateItem', itemId: item.id, patch: placeOnDay(item, day) };
-    const days = Math.round((ctx.pointerEnd.x - ctx.pointerStart.x) / ctx.dropRect.width);
-    const patch = shiftItemDays(item, days);
-    return Object.keys(patch).length ? { type: 'updateItem', itemId: item.id, patch } : NONE;
+    const days = payload.kind === 'timelineBar'
+      ? Math.round((ctx.pointerEnd.x - ctx.pointerStart.x) / ctx.dropRect.width)
+      : item.open_at && item.deadline_at ? daysBetween(startOfDayLocal(new Date(item.open_at)), day) : null;
+    if (days === null) return { type: 'updateItem', itemId: item.id, patch: placeOnDay(item, day) };
+    return days ? { type: 'shiftItem', itemId: item.id, days } : NONE;
   }
   return NONE;
 }

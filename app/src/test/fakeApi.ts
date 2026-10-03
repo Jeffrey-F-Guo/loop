@@ -1,6 +1,7 @@
 import { ApiError, type ApiClient, type HttpMethod } from '../api/client';
 import type { Item, Layout, WorkBlock } from '../api/types';
 import { DEFAULT_LAYOUT } from '../domain/layout';
+import { shiftDays } from '../domain/time';
 
 let seq = 0;
 const uid = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`;
@@ -74,6 +75,17 @@ export function createFakeApi(seed: { items?: Item[]; blocks?: WorkBlock[]; layo
       if (route.startsWith('/items/')) {
         const idx = api.items.findIndex((i) => i.id === id);
         if (idx < 0) throw notFound();
+        if (method === 'PATCH' && typeof b.shift_days === 'number') {
+          // Mirrors the API: dates and all of the item's blocks move by whole local days.
+          const shift = (s: string) => shiftDays(new Date(s), b.shift_days as number).toISOString();
+          const cur = api.items[idx];
+          api.items[idx] = {
+            ...cur, updated_at: now(),
+            open_at: cur.open_at && shift(cur.open_at), deadline_at: cur.deadline_at && shift(cur.deadline_at),
+          };
+          api.blocks = api.blocks.map((x) => (x.item_id === id ? { ...x, start_at: shift(x.start_at), end_at: shift(x.end_at) } : x));
+          return withCount(api.items[idx]) as T;
+        }
         if (method === 'PATCH') {
           const next = { ...api.items[idx], ...(b as Partial<Item>), updated_at: now() };
           if (b.status === 'completed' && api.items[idx].status !== 'completed') next.completed_at = now();

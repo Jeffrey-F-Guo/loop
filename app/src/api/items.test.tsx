@@ -4,7 +4,7 @@ import { createFakeApi, makeBlock, makeItem } from '../test/fakeApi';
 import { createWrapper } from '../test/render';
 import { REVERTED_MESSAGE, useToastStore } from '../ui/toastStore';
 import { qk } from './keys';
-import { tempId, useCreateItem, useDeleteItem, useItems, useUpdateItem } from './items';
+import { tempId, useCreateItem, useDeleteItem, useItems, useShiftItem, useUpdateItem } from './items';
 import { useWorkBlocks } from './workBlocks';
 import type { Item, WorkBlock } from './types';
 
@@ -112,5 +112,46 @@ describe('items hooks', () => {
     expect(blockCaches.every(([, data]) => !data || data.length === 0)).toBe(true);
     release();
     await waitFor(() => expect(api.items).toHaveLength(0));
+  });
+});
+
+describe('useShiftItem (moving a Timeline bar)', () => {
+  const local = (d: number, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+  const week = { start: new Date(2026, 9, 5), end: new Date(2026, 9, 12) };
+  const seed = () => createFakeApi({
+    items: [makeItem({ id: 'i1', open_at: local(5), deadline_at: local(9, 23, 59) })],
+    blocks: [makeBlock({ id: 'b1', item_id: 'i1', start_at: local(6, 19), end_at: local(6, 20) })],
+  });
+  const blockIn = (qc: ReturnType<typeof createWrapper>['qc']) =>
+    qc.getQueryData<WorkBlock[]>(qk.workBlocksRange(week.start.toISOString(), week.end.toISOString()))!.find((b) => b.id === 'b1')!;
+
+  it('moves the dates and the scheduled blocks together, before the server answers', async () => {
+    const api = seed();
+    const { wrapper, qc } = createWrapper(api);
+    const { result } = renderHook(() => ({ items: useItems(), blocks: useWorkBlocks(week), shift: useShiftItem() }), { wrapper });
+    await waitFor(() => expect(result.current.items.isSuccess && result.current.blocks.isSuccess).toBe(true));
+
+    const release = api.hold();
+    await act(async () => result.current.shift.mutate({ id: 'i1', days: 2 }));
+    const it = qc.getQueryData<Item[]>(qk.items)![0];
+    expect([it.open_at, it.deadline_at]).toEqual([local(7), local(11, 23, 59)]);
+    expect([blockIn(qc).start_at, blockIn(qc).end_at]).toEqual([local(8, 19), local(8, 20)]);
+    release();
+    await waitFor(() => expect(api.calls.at(-1)).toMatchObject({
+      method: 'PATCH', path: '/items/i1', body: { shift_days: 2, time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    }));
+    await waitFor(() => expect(api.blocks[0].start_at).toBe(local(8, 19)));
+  });
+
+  it('a failed shift puts the dates and the blocks back', async () => {
+    const api = seed();
+    const { wrapper, qc } = createWrapper(api);
+    const { result } = renderHook(() => ({ items: useItems(), blocks: useWorkBlocks(week), shift: useShiftItem() }), { wrapper });
+    await waitFor(() => expect(result.current.items.isSuccess && result.current.blocks.isSuccess).toBe(true));
+    api.failNext((m) => m === 'PATCH');
+    await act(async () => result.current.shift.mutate({ id: 'i1', days: 2 }));
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(REVERTED_MESSAGE));
+    expect(qc.getQueryData<Item[]>(qk.items)![0].open_at).toBe(local(5));
+    expect(blockIn(qc).start_at).toBe(local(6, 19));
   });
 });

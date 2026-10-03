@@ -25,6 +25,7 @@ export type DropAction =
   | { type: 'createBlock'; itemId: string; startAt: string; endAt: string }
   | { type: 'moveBlock'; blockId: string; startAt: string; endAt: string }
   | { type: 'updateItem'; itemId: string; patch: UpdateItemInput }
+  | { type: 'shiftItem'; itemId: string; days: number } // dates and work blocks move together
   | { type: 'dock'; viewId: string; targetViewId: string; edge: DockEdge }
   | { type: 'none' };
 

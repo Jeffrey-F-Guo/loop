@@ -33,6 +33,19 @@ describe('edge edits', () => {
   it('right edge dragged before the open day clamps to the open day', () => {
     expect(setDeadlineDay(ranged, fromDateKey('2026-10-01'))).toEqual({ deadline_at: local(2026, 10, 5, 23, 59) });
   });
+
+  // A Wednesday 7–8 PM block: the range must keep covering it.
+  const wedBlock = [{ start_at: local(2026, 10, 7, 19), end_at: local(2026, 10, 7, 20) }];
+  it('left edge stops at the earliest scheduled block', () => {
+    expect(setOpenDay(ranged, fromDateKey('2026-10-09'), wedBlock)).toEqual({ open_at: local(2026, 10, 7) });
+  });
+  it('right edge stops at the latest scheduled block', () => {
+    expect(setDeadlineDay(ranged, fromDateKey('2026-10-06'), wedBlock)).toEqual({ deadline_at: local(2026, 10, 7, 23, 59) });
+  });
+  it('a block ending at midnight keeps the following day', () => {
+    const lateBlock = [{ start_at: local(2026, 10, 7, 23), end_at: local(2026, 10, 8, 0) }];
+    expect(setDeadlineDay(ranged, fromDateKey('2026-10-06'), lateBlock)).toEqual({ deadline_at: local(2026, 10, 8, 23, 59) });
+  });
 });
 
 describe('shiftItemDays', () => {

@@ -5,7 +5,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef, type ReactNode } from 'react';
 import { collectBlocks } from '../api/blockCache';
-import { tempId, useItemsById, useUpdateItem } from '../api/items';
+import { tempId, useItemsById, useShiftItem, useUpdateItem } from '../api/items';
 import { useCreateWorkBlock, useUpdateWorkBlock } from '../api/workBlocks';
 import { tokens } from '../ui/tokens';
 import { useDragStore } from './dragStore';
@@ -36,6 +36,7 @@ export function DndProvider({ children, onDock }: { children: ReactNode; onDock?
   const createBlock = useCreateWorkBlock();
   const updateBlock = useUpdateWorkBlock();
   const updateItem = useUpdateItem();
+  const shiftItem = useShiftItem();
   const store = useDragStore;
   const moveListener = useRef<((e: PointerEvent) => void) | null>(null);
 
@@ -69,11 +70,14 @@ export function DndProvider({ children, onDock }: { children: ReactNode; onDock?
       case 'updateItem':
         updateItem.mutate({ id: a.itemId, patch: a.patch });
         break;
+      case 'shiftItem':
+        shiftItem.mutate({ id: a.itemId, days: a.days });
+        break;
       case 'dock':
         onDock?.(a);
         break;
     }
-  }, [createBlock, updateBlock, updateItem, onDock]);
+  }, [createBlock, updateBlock, updateItem, shiftItem, onDock]);
 
   const onDragEnd = useCallback((e: DragEndEvent) => {
     stopTracking();

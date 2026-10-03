@@ -1,6 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query';
+import { collectBlocks } from '../../api/blockCache';
 import type { Item, WorkBlock } from '../../api/types';
+import { useDragStore } from '../../dnd/dragStore';
 import { useTypedDroppable } from '../../dnd/hooks';
 import { usePreviewAction } from '../../dnd/usePreviewAction';
+import { dayInWindow } from '../../domain/range';
 import { HOUR_PX, MINUTES_PER_DAY, minutesSinceMidnight, toDateKey } from '../../domain/time';
 import { tokens } from '../../ui/tokens';
 import { BlockView } from './BlockView';
@@ -8,6 +12,20 @@ import { assignLanes } from './lanes';
 
 const SLOT_PX = HOUR_PX / 4;
 const slotLabel = (i: number) => `${String(Math.floor(i / 4)).padStart(2, '0')}${String((i % 4) * 15).padStart(2, '0')}`;
+const OUT_OF_RANGE_BG = `repeating-linear-gradient(-45deg, ${tokens.color.hover} 0 6px, transparent 6px 12px)`;
+
+/** The Item behind the current drag (Dropbox row, Timeline bar, or Calendar block), if any. */
+function useDraggedItem(items: Map<string, Item>): Item | null {
+  const qc = useQueryClient();
+  const payload = useDragStore((s) => s.payload);
+  if (!payload) return null;
+  if (payload.kind === 'item' || payload.kind === 'timelineBar') return items.get(payload.itemId) ?? null;
+  if (payload.kind === 'workBlock') {
+    const block = collectBlocks(qc).get(payload.blockId);
+    return (block && items.get(block.item_id)) ?? null;
+  }
+  return null;
+}
 
 export function DayColumn({ viewId, date, blocks, items }: {
   viewId: string;
@@ -19,6 +37,8 @@ export function DayColumn({ viewId, date, blocks, items }: {
   const drop = { kind: 'calendarDay', date: key } as const;
   const { setNodeRef, isOver, getRect } = useTypedDroppable({ id: `${viewId}:cday:${key}`, drop });
   const preview = usePreviewAction(drop, isOver, getRect);
+  const dragged = useDraggedItem(items);
+  const outOfRange = !!dragged && !dayInWindow(dragged, date);
   const lanes = assignLanes(blocks.map((b) => ({
     id: b.id,
     start: minutesSinceMidnight(new Date(b.start_at)),
@@ -38,7 +58,11 @@ export function DayColumn({ viewId, date, blocks, items }: {
     <div
       ref={setNodeRef}
       data-testid={`calendar-day-${key}`}
-      style={{ position: 'relative', flex: 1, minWidth: 0, height: 24 * HOUR_PX, borderLeft: `1px solid ${tokens.color.border}`, background: isOver ? tokens.color.accentFaint : 'transparent' }}
+      data-out-of-range={outOfRange || undefined}
+      style={{
+        position: 'relative', flex: 1, minWidth: 0, height: 24 * HOUR_PX, borderLeft: `1px solid ${tokens.color.border}`,
+        background: outOfRange ? OUT_OF_RANGE_BG : isOver && preview?.type !== 'none' ? tokens.color.accentFaint : 'transparent',
+      }}
     >
       {Array.from({ length: 96 }, (_, i) => (
         <div

@@ -57,6 +57,18 @@ describe('planDrop → Calendar', () => {
     });
   });
 
+  it('refuses days outside the item range (Mon → Fri)', () => {
+    const sun = { kind: 'calendarDay', date: '2026-10-11' } as const;
+    expect(planDrop({ kind: 'item', itemId: 'i1' }, sun, ctx())).toEqual({ type: 'none' });
+    expect(planDrop({ kind: 'workBlock', blockId: 'b1' }, sun, ctx({ activeInitialRect: { top: 0, left: 0, width: 1, height: 1 } }))).toEqual({ type: 'none' });
+  });
+
+  it('on the deadline day, pulls a late drop back so the block ends by 23:59', () => {
+    const fri = { kind: 'calendarDay', date: '2026-10-09' } as const;
+    const c = ctx({ pointerEnd: { x: 0, y: columnTop + 23.5 * HOUR_PX } });
+    expect(planDrop({ kind: 'item', itemId: 'i1' }, fri, c)).toMatchObject({ startAt: local(9, 22, 45), endAt: local(9, 23, 45) });
+  });
+
   it('an unknown item or block is a no-op', () => {
     expect(planDrop({ kind: 'item', itemId: 'nope' }, tue, ctx())).toEqual({ type: 'none' });
     expect(planDrop({ kind: 'workBlock', blockId: 'nope' }, tue, ctx())).toEqual({ type: 'none' });
@@ -73,11 +85,13 @@ describe('planDrop → Timeline', () => {
     });
   });
 
-  it('dragging a bar shifts it by whole columns of pointer movement', () => {
+  it('dragging a bar shifts the item (and its blocks) by whole columns of pointer movement', () => {
     const c = ctx({ pointerStart: { x: 100, y: 0 }, pointerEnd: { x: 100 + 2 * 120 + 10, y: 0 } });
-    expect(planDrop({ kind: 'timelineBar', itemId: 'i1' }, day('2026-10-08'), c)).toEqual({
-      type: 'updateItem', itemId: 'i1', patch: { open_at: local(7, 0), deadline_at: local(11, 23, 59) },
-    });
+    expect(planDrop({ kind: 'timelineBar', itemId: 'i1' }, day('2026-10-08'), c)).toEqual({ type: 'shiftItem', itemId: 'i1', days: 2 });
+  });
+
+  it('a dated Dropbox item dropped on a day shifts so it opens that day', () => {
+    expect(planDrop({ kind: 'item', itemId: 'i1' }, day('2026-10-07'), ctx())).toEqual({ type: 'shiftItem', itemId: 'i1', days: 2 });
   });
 
   it('a bar dropped back where it started is a no-op', () => {
