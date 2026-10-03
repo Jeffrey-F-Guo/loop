@@ -19,10 +19,9 @@ describe('workspace chrome', () => {
     await waitFor(() => expect(dropboxPanels()).toHaveLength(2));
 
     const second = dropboxPanels()[1] as HTMLElement;
-    await user.click(within(second).getByTestId('dropbox-filter'));
-    await user.click(within(second).getByTestId('dropbox-filter-option-scheduled'));
-    await waitFor(() => expect(within(second).getByTestId('dropbox-filter')).toHaveAttribute('data-filter', 'scheduled'));
-    expect(within(dropboxPanels()[0] as HTMLElement).getByTestId('dropbox-filter')).toHaveAttribute('data-filter', 'all');
+    await user.click(within(second).getByTestId('dropbox-section-toggle-completed'));
+    await waitFor(() => expect(within(second).getByTestId('dropbox-section-toggle-completed')).toHaveAttribute('aria-pressed', 'true'));
+    expect(within(dropboxPanels()[0] as HTMLElement).getByTestId('dropbox-section-toggle-completed')).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('closes a view and shows the empty state after the last one', async () => {

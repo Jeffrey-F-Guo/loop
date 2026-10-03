@@ -11,7 +11,7 @@ describe('Workspace', () => {
     expect(screen.getByTestId('panel-v-dropbox')).toHaveAttribute('data-view-type', 'dropbox');
     expect(screen.getByTestId('panel-v-calendar')).toHaveAttribute('data-view-type', 'calendar');
     expect(screen.getByTestId('panel-v-timeline')).toHaveAttribute('data-view-type', 'timeline');
-    expect(screen.getByTestId('panel-v-dropbox')).toHaveTextContent('Dropbox · All');
+    expect(screen.getByTestId('panel-v-dropbox')).toHaveTextContent('Dropbox');
   });
 
   it('shows an empty state when no views are open', async () => {

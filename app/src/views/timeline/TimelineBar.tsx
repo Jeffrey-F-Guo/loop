@@ -8,6 +8,7 @@ import { itemBlocksQuery } from '../../api/workBlocks';
 import { useDragStore } from '../../dnd/dragStore';
 import { useTypedDraggable } from '../../dnd/hooks';
 import { toRect } from '../../dnd/types';
+import { formatMinutes } from '../../domain/scheduling';
 import { clamp, daysBetween, fromDateKey, startOfDayLocal, toDateKey } from '../../domain/time';
 import { setDeadlineDay, setOpenDay } from '../../domain/timeline';
 import { useItemDetailStore } from '../../ui/itemDetailStore';
@@ -40,6 +41,20 @@ function EdgeHandle({ testID, onPointerDown, visible }: { testID: string; onPoin
     >
       <div style={{ width: 3, height: 12, borderRadius: 2, background: tokens.color.accent, opacity: visible ? 0.9 : 0, transition: `opacity ${tokens.motion.fast}` }} />
     </div>
+  );
+}
+
+/** The task's total scheduled Calendar time, shown quietly at the end of its bar. */
+function ScheduledTime({ item, style }: { item: Item; style?: React.CSSProperties }) {
+  if (item.scheduled_minutes <= 0) return null;
+  return (
+    <span
+      data-testid={`timeline-time-${item.id}`}
+      title={`${formatMinutes(item.scheduled_minutes)} scheduled on the calendar`}
+      style={{ flexShrink: 0, fontSize: 10, color: tokens.color.muted, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', ...style }}
+    >
+      {formatMinutes(item.scheduled_minutes)}
+    </span>
   );
 }
 
@@ -99,21 +114,27 @@ export function TimelineBar({ item, geo, days, viewId, daysRef }: {
   if (geo.kind === 'marker') {
     const col = clamp(geo.col + (shift ?? 0), 0, 6);
     return (
-      <div
-        ref={drag.setNodeRef}
-        {...drag.listeners}
-        {...drag.attributes}
-        data-testid={`timeline-marker-${item.id}`}
-        data-deadline-date={deadlineKey}
-        data-preview-shift={shiftAttr}
-        title={`${item.title} · due ${deadlineKey}`}
-        onClick={(e) => openDetail(item.id, toRect(e.currentTarget.getBoundingClientRect()))}
-        style={{
-          position: 'absolute', top: 8, left: `calc(${pct(col)} + ${100 / 14}% - 6px)`, width: 12, height: 12,
-          borderRadius: 6, background: tokens.color.accent, cursor: 'grab', opacity: drag.isDragging ? 0.4 : 1,
-          ...movingStyle,
-        }}
-      />
+      <>
+        <div
+          ref={drag.setNodeRef}
+          {...drag.listeners}
+          {...drag.attributes}
+          data-testid={`timeline-marker-${item.id}`}
+          data-deadline-date={deadlineKey}
+          data-preview-shift={shiftAttr}
+          title={`${item.title} · due ${deadlineKey}`}
+          onClick={(e) => openDetail(item.id, toRect(e.currentTarget.getBoundingClientRect()), { from: 'timeline' })}
+          style={{
+            position: 'absolute', top: 8, left: `calc(${pct(col)} + ${100 / 14}% - 6px)`, width: 12, height: 12,
+            borderRadius: 6, background: tokens.color.accent, cursor: 'grab', opacity: drag.isDragging ? 0.4 : 1,
+            ...movingStyle,
+          }}
+        />
+        <ScheduledTime
+          item={item}
+          style={{ position: 'absolute', top: 6, left: `calc(${pct(col)} + ${100 / 14}% + 9px)`, lineHeight: '16px', pointerEvents: 'none' }}
+        />
+      </>
     );
   }
 
@@ -151,7 +172,7 @@ export function TimelineBar({ item, geo, days, viewId, daysRef }: {
         ref={drag.setNodeRef}
         {...drag.listeners}
         {...drag.attributes}
-        onClick={(e) => openDetail(item.id, toRect(e.currentTarget.getBoundingClientRect()))}
+        onClick={(e) => openDetail(item.id, toRect(e.currentTarget.getBoundingClientRect()), { from: 'timeline' })}
         style={{
           flex: 1, minWidth: 0, padding: '0 4px', fontSize: tokens.font.size.xs, lineHeight: '22px', cursor: moving ? 'grabbing' : 'grab',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: tokens.color.text,
@@ -159,6 +180,7 @@ export function TimelineBar({ item, geo, days, viewId, daysRef }: {
       >
         {item.title}
       </div>
+      <ScheduledTime item={item} style={{ lineHeight: '22px', paddingRight: geo.clippedRight ? 4 : 0 }} />
       {!geo.clippedRight && <EdgeHandle testID={`timeline-bar-right-${item.id}`} onPointerDown={startEdgeDrag('right')} visible={showGrips} />}
     </div>
   );

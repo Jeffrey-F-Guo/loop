@@ -28,9 +28,14 @@ export function useItemWorkBlocks(itemId: string | null) {
   return useQuery({ ...itemBlocksQuery(api, itemId ?? ''), enabled: !!itemId && !itemId.startsWith('tmp-') });
 }
 
-function bumpCount(qc: ReturnType<typeof useQueryClient>, itemId: string, delta: number) {
+const minutesOf = (b: { start_at: string; end_at: string }) => Math.round((Date.parse(b.end_at) - Date.parse(b.start_at)) / 60_000);
+
+/** Keeps an item's block count and scheduled time in step with an optimistic block change. */
+function adjustItem(qc: ReturnType<typeof useQueryClient>, itemId: string, count: number, minutes: number) {
   qc.setQueryData<Item[]>(qk.items, (old) =>
-    old?.map((i) => (i.id === itemId ? { ...i, work_block_count: Math.max(0, i.work_block_count + delta) } : i)));
+    old?.map((i) => (i.id === itemId
+      ? { ...i, work_block_count: Math.max(0, i.work_block_count + count), scheduled_minutes: Math.max(0, i.scheduled_minutes + minutes) }
+      : i)));
 }
 
 export function useCreateWorkBlock() {
@@ -44,7 +49,7 @@ export function useCreateWorkBlock() {
       const prevItems = qc.getQueryData<Item[]>(qk.items);
       const ts = new Date().toISOString();
       upsertBlockInCaches(qc, { id: tempId, ...input, created_at: ts, updated_at: ts });
-      bumpCount(qc, input.item_id, +1);
+      adjustItem(qc, input.item_id, +1, minutesOf(input));
       return { snap, prevItems };
     },
     onSuccess: (block, { tempId }) => upsertBlockInCaches(qc, block, tempId),
@@ -67,12 +72,19 @@ export function useUpdateWorkBlock() {
       await qc.cancelQueries({ queryKey: qk.workBlocks });
       const snap = snapshotBlocks(qc);
       const cur = collectBlocks(qc).get(id);
-      if (cur) upsertBlockInCaches(qc, { ...cur, ...patch });
-      return { snap };
+      let resized: { itemId: string; minutes: number } | null = null;
+      if (cur) {
+        const next = { ...cur, ...patch };
+        upsertBlockInCaches(qc, next);
+        resized = { itemId: cur.item_id, minutes: minutesOf(next) - minutesOf(cur) };
+        if (resized.minutes) adjustItem(qc, resized.itemId, 0, resized.minutes);
+      }
+      return { snap, resized };
     },
     onSuccess: (block) => upsertBlockInCaches(qc, block),
     onError: (_e, _v, ctx) => {
       if (ctx) restoreBlocks(qc, ctx.snap);
+      if (ctx?.resized?.minutes) adjustItem(qc, ctx.resized.itemId, 0, -ctx.resized.minutes);
       showToast(REVERTED_MESSAGE);
     },
   });
@@ -89,7 +101,7 @@ export function useDeleteWorkBlock() {
       const prevItems = qc.getQueryData<Item[]>(qk.items);
       const cur = collectBlocks(qc).get(id);
       removeBlocksFromCaches(qc, (b) => b.id === id);
-      if (cur) bumpCount(qc, cur.item_id, -1);
+      if (cur) adjustItem(qc, cur.item_id, -1, -minutesOf(cur));
       return { snap, prevItems };
     },
     onError: (_e, _v, ctx) => {

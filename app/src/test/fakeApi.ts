@@ -9,7 +9,7 @@ const now = () => new Date().toISOString();
 
 export const makeItem = (over: Partial<Item> = {}): Item => ({
   id: uid(), title: 'Item', description: null, open_at: null, deadline_at: null, status: 'active',
-  work_block_count: 0, created_at: now(), updated_at: now(), completed_at: null, ...over,
+  work_block_count: 0, scheduled_minutes: 0, created_at: now(), updated_at: now(), completed_at: null, ...over,
 });
 
 export const makeBlock = (over: Partial<WorkBlock> & { item_id: string }): WorkBlock => ({
@@ -32,7 +32,11 @@ export function createFakeApi(seed: { items?: Item[]; blocks?: WorkBlock[]; layo
   let failPred: ((m: HttpMethod, p: string) => boolean) | null = null;
   let gate: Promise<void> | null = null;
 
-  const withCount = (i: Item): Item => ({ ...i, work_block_count: api.blocks.filter((b) => b.item_id === i.id).length });
+  const withCount = (i: Item): Item => {
+    const mine = api.blocks.filter((b) => b.item_id === i.id);
+    const minutes = mine.reduce((m, b) => m + (Date.parse(b.end_at) - Date.parse(b.start_at)) / 60_000, 0);
+    return { ...i, work_block_count: mine.length, scheduled_minutes: Math.round(minutes) };
+  };
   const notFound = () => new ApiError(404, 'not_found', 'not found');
 
   const api: FakeApi = {
@@ -75,6 +79,11 @@ export function createFakeApi(seed: { items?: Item[]; blocks?: WorkBlock[]; layo
       if (route.startsWith('/items/')) {
         const idx = api.items.findIndex((i) => i.id === id);
         if (idx < 0) throw notFound();
+        if (method === 'POST' && route.endsWith('/unschedule')) {
+          api.blocks = api.blocks.filter((x) => x.item_id !== id);
+          api.items[idx] = { ...api.items[idx], open_at: null, deadline_at: null, updated_at: now() };
+          return withCount(api.items[idx]) as T;
+        }
         if (method === 'PATCH' && typeof b.shift_days === 'number') {
           // Mirrors the API: dates and all of the item's blocks move by whole local days.
           const shift = (s: string) => shiftDays(new Date(s), b.shift_days as number).toISOString();

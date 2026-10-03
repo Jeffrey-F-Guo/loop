@@ -3,20 +3,26 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeApi, makeBlock, makeItem } from '../../test/fakeApi';
 import { renderWithProviders } from '../../test/render';
-import { useItemDetailStore } from '../../ui/itemDetailStore';
+import { useItemDetailStore, type DetailSource } from '../../ui/itemDetailStore';
 import { ItemDetailHost } from './ItemDetailHost';
 
 const local = (d: number, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
 const lastPatch = (api: ReturnType<typeof createFakeApi>) => [...api.calls].reverse().find((c) => c.method === 'PATCH');
 
-function setup(over = {}) {
+function setup(over = {}, source?: DetailSource) {
   const item = makeItem({ id: 'i1', title: 'Physics Assignment', description: 'Problems 1-8', ...over });
-  const api = createFakeApi({ items: [item], blocks: [makeBlock({ id: 'b1', item_id: 'i1', start_at: local(6, 19), end_at: local(6, 20) })] });
-  useItemDetailStore.getState().open('i1');
+  const api = createFakeApi({
+    items: [item],
+    blocks: [
+      makeBlock({ id: 'b1', item_id: 'i1', start_at: local(6, 19), end_at: local(6, 20) }),
+      makeBlock({ id: 'b2', item_id: 'i1', start_at: local(7, 19), end_at: local(7, 20) }),
+    ],
+  });
+  useItemDetailStore.getState().open('i1', null, source);
   return { ...renderWithProviders(<ItemDetailHost />, { api }), item };
 }
 
-beforeEach(() => useItemDetailStore.setState({ itemId: null, anchor: null }));
+beforeEach(() => useItemDetailStore.setState({ itemId: null, anchor: null, source: { from: 'list' } }));
 afterEach(() => vi.restoreAllMocks());
 
 describe('ItemDetail', () => {
@@ -78,7 +84,7 @@ describe('ItemDetail', () => {
     const { api } = setup();
     expect(await screen.findByTestId('item-block-b1')).toHaveTextContent('7:00 – 8:00 PM');
     await user.click(screen.getByTestId('item-block-delete-b1'));
-    await waitFor(() => expect(api.blocks).toHaveLength(0));
+    await waitFor(() => expect(api.blocks.map((b) => b.id)).toEqual(['b2']));
   });
 
   it('Done saves pending edits and closes without completing the item', async () => {
@@ -102,6 +108,48 @@ describe('ItemDetail', () => {
     expect(await screen.findByTestId('item-complete-toggle')).toHaveTextContent('Reopen');
     await user.click(screen.getByTestId('item-complete-toggle'));
     await waitFor(() => expect(lastPatch(api)?.body).toEqual({ status: 'active' }));
+  });
+
+  it('from the task list, Delete is the only removal offered and removes the whole task', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { api } = setup({}, { from: 'list' });
+    await screen.findByTestId('item-delete');
+    expect(screen.queryByTestId('item-remove-block')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('item-remove-from-timeline')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('item-delete'));
+    await waitFor(() => expect(api.items).toHaveLength(0));
+    expect(api.blocks).toHaveLength(0);
+  });
+
+  it('from the Calendar, removing deletes only that calendar entry and keeps the task', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm');
+    const { api } = setup({}, { from: 'calendar', blockId: 'b1' });
+    expect(await screen.findByTestId('item-remove-block')).toHaveTextContent('Remove from calendar');
+    expect(screen.queryByTestId('item-delete')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('item-remove-block'));
+    await waitFor(() => expect(api.blocks.map((b) => b.id)).toEqual(['b2']));
+    expect(api.items).toHaveLength(1);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(useItemDetailStore.getState().itemId).toBeNull();
+  });
+
+  it('from the Timeline, removing clears the dates and every calendar entry but keeps the task', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    const { api } = setup({ open_at: local(5), deadline_at: local(9, 23, 59) }, { from: 'timeline' });
+    expect(await screen.findByTestId('item-remove-from-timeline')).toHaveTextContent('Remove from timeline');
+    expect(screen.queryByTestId('item-delete')).not.toBeInTheDocument();
+    await screen.findByTestId('item-block-b2');
+    await user.click(screen.getByTestId('item-remove-from-timeline'));
+    expect(api.calls.some((c) => c.path.endsWith('/unschedule'))).toBe(false);
+    expect(confirm.mock.calls[0][0]).toContain('2 calendar blocks');
+    await user.click(screen.getByTestId('item-remove-from-timeline'));
+    await waitFor(() => expect(api.blocks).toHaveLength(0));
+    expect(api.items).toHaveLength(1);
+    expect(api.items[0]).toMatchObject({ open_at: null, deadline_at: null });
+    expect(useItemDetailStore.getState().itemId).toBeNull();
   });
 
   it('Delete asks for confirmation first', async () => {

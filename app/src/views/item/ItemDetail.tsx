@@ -1,9 +1,10 @@
 import { format } from 'date-fns';
 import { useState } from 'react';
-import { useDeleteItem, useUpdateItem } from '../../api/items';
+import { useDeleteItem, useUnscheduleItem, useUpdateItem } from '../../api/items';
 import type { Item, UpdateItemInput } from '../../api/types';
 import { useDeleteWorkBlock, useItemWorkBlocks } from '../../api/workBlocks';
 import { atMinutes, fromDateKey, startOfDayLocal, toDateKey } from '../../domain/time';
+import type { DetailSource } from '../../ui/itemDetailStore';
 import { tokens } from '../../ui/tokens';
 
 const label = { fontSize: tokens.font.size.xs, color: tokens.color.muted, textTransform: 'uppercase' as const, letterSpacing: 0.4, marginTop: 14, marginBottom: 4 };
@@ -14,9 +15,12 @@ const parseTime = (v: string) => {
   return h * 60 + m;
 };
 
-export function ItemDetail({ item, onClose }: { item: Item; onClose: () => void }) {
+const removeButton = { border: 'none', background: 'transparent', color: tokens.color.danger, padding: '6px 10px' };
+
+export function ItemDetail({ item, source = { from: 'list' }, onClose }: { item: Item; source?: DetailSource; onClose: () => void }) {
   const update = useUpdateItem();
   const del = useDeleteItem();
+  const unschedule = useUnscheduleItem();
   const blocks = useItemWorkBlocks(item.id);
   const deleteBlock = useDeleteWorkBlock();
   const [title, setTitle] = useState(item.title);
@@ -133,17 +137,49 @@ export function ItemDetail({ item, onClose }: { item: Item; onClose: () => void 
           {item.status === 'completed' ? 'Reopen' : 'Mark complete'}
         </button>
         <span style={{ flex: 1 }} />
-        <button
-          data-testid="item-delete"
-          onClick={() => {
-            if (!window.confirm(`Delete "${item.title}"? Its scheduled blocks will be removed too.`)) return;
-            del.mutate({ id: item.id });
-            onClose();
-          }}
-          style={{ border: 'none', background: 'transparent', color: tokens.color.danger, padding: '6px 10px' }}
-        >
-          Delete
-        </button>
+        {/* Each view removes only what it manages; only the task list deletes the task itself. */}
+        {source.from === 'calendar' && (
+          <button
+            data-testid="item-remove-block"
+            title="Remove this calendar entry; the task and its other entries stay"
+            onClick={() => {
+              deleteBlock.mutate({ id: source.blockId });
+              onClose();
+            }}
+            style={removeButton}
+          >
+            Remove from calendar
+          </button>
+        )}
+        {source.from === 'timeline' && (
+          <button
+            data-testid="item-remove-from-timeline"
+            title="Clear the dates and all calendar entries; the task stays in your list"
+            onClick={() => {
+              const n = blocks.data?.length ?? item.work_block_count;
+              const also = n > 0 ? ` and its ${n} calendar block${n === 1 ? '' : 's'}` : '';
+              if (!window.confirm(`Remove "${item.title}" from the timeline? Its dates${also} will be cleared. The task stays in your list.`)) return;
+              unschedule.mutate({ id: item.id });
+              onClose();
+            }}
+            style={removeButton}
+          >
+            Remove from timeline
+          </button>
+        )}
+        {source.from === 'list' && (
+          <button
+            data-testid="item-delete"
+            onClick={() => {
+              if (!window.confirm(`Delete "${item.title}"? It will be removed from the Calendar and Timeline too.`)) return;
+              del.mutate({ id: item.id });
+              onClose();
+            }}
+            style={removeButton}
+          >
+            Delete
+          </button>
+        )}
         <button
           data-testid="item-done"
           // Edits already saved as they were made (title/description commit on the blur this click causes).

@@ -4,7 +4,7 @@ import { createFakeApi, makeBlock, makeItem } from '../test/fakeApi';
 import { createWrapper } from '../test/render';
 import { qk } from './keys';
 import { tempId, useItems } from './items';
-import { useCreateWorkBlock, useUpdateWorkBlock, useWorkBlocks } from './workBlocks';
+import { useCreateWorkBlock, useDeleteWorkBlock, useUpdateWorkBlock, useWorkBlocks } from './workBlocks';
 import type { Item, WorkBlock } from './types';
 
 const week1 = { start: new Date('2026-10-05T07:00:00Z'), end: new Date('2026-10-12T07:00:00Z') };
@@ -42,6 +42,48 @@ describe('work block hooks', () => {
     }));
     await waitFor(() => expect(result.current.blocks.data).toHaveLength(0));
     expect(qc.getQueryData<Item[]>(qk.items)![0].work_block_count).toBe(0);
+    expect(qc.getQueryData<Item[]>(qk.items)![0].scheduled_minutes).toBe(0);
+  });
+
+  it("the item's scheduled time follows creates, resizes and deletes immediately", async () => {
+    const api = createFakeApi({
+      items: [makeItem({ id: 'i1' })],
+      blocks: [makeBlock({ id: 'b1', item_id: 'i1', start_at: '2026-10-07T02:00:00.000Z', end_at: '2026-10-07T03:00:00.000Z' })],
+    });
+    const { wrapper, qc } = createWrapper(api);
+    const { result } = renderHook(() => ({
+      items: useItems(), blocks: useWorkBlocks(week1),
+      create: useCreateWorkBlock(), update: useUpdateWorkBlock(), del: useDeleteWorkBlock(),
+    }), { wrapper });
+    await waitFor(() => expect(result.current.blocks.isSuccess && result.current.items.isSuccess).toBe(true));
+    const minutes = () => qc.getQueryData<Item[]>(qk.items)![0].scheduled_minutes;
+    expect(minutes()).toBe(60);
+
+    const release = api.hold();
+    await act(async () => result.current.create.mutate({
+      tempId: tempId('b'),
+      input: { item_id: 'i1', start_at: '2026-10-08T02:00:00.000Z', end_at: '2026-10-08T02:30:00.000Z' },
+    }));
+    expect(minutes()).toBe(90);
+    await act(async () => result.current.update.mutate({ id: 'b1', patch: { end_at: '2026-10-07T04:30:00.000Z' } }));
+    expect(minutes()).toBe(180);
+    await act(async () => result.current.del.mutate({ id: 'b1' }));
+    expect(minutes()).toBe(30);
+    release();
+  });
+
+  it('a failed resize puts the scheduled time back', async () => {
+    const api = createFakeApi({
+      items: [makeItem({ id: 'i1' })],
+      blocks: [makeBlock({ id: 'b1', item_id: 'i1', start_at: '2026-10-07T02:00:00.000Z', end_at: '2026-10-07T03:00:00.000Z' })],
+    });
+    const { wrapper, qc } = createWrapper(api);
+    const { result } = renderHook(() => ({ items: useItems(), blocks: useWorkBlocks(week1), update: useUpdateWorkBlock() }), { wrapper });
+    await waitFor(() => expect(result.current.blocks.isSuccess && result.current.items.isSuccess).toBe(true));
+    api.failNext();
+    await act(async () => result.current.update.mutate({ id: 'b1', patch: { end_at: '2026-10-07T04:00:00.000Z' } }));
+    await waitFor(() => expect(result.current.update.isError).toBe(true));
+    expect(qc.getQueryData<Item[]>(qk.items)![0].scheduled_minutes).toBe(60);
   });
 
   it('moving a block across weeks moves it between cached ranges', async () => {

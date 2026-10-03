@@ -6,7 +6,7 @@ import { placeOnDay, setDeadlineDay, setOpenDay, shiftItemDays, timelineShape } 
 const local = (y: number, m: number, d: number, h = 0, min = 0) => new Date(y, m - 1, d, h, min).toISOString();
 const item = (over: Partial<Item> = {}): Item => ({
   id: 'i', title: 'i', description: null, open_at: null, deadline_at: null, status: 'active',
-  work_block_count: 0, created_at: '', updated_at: '', completed_at: null, ...over,
+  work_block_count: 0, scheduled_minutes: 0, created_at: '', updated_at: '', completed_at: null, ...over,
 });
 const mon = local(2026, 10, 5);
 const friEnd = local(2026, 10, 9, 23, 59);

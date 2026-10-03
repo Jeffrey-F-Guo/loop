@@ -10,6 +10,8 @@ export interface Item {
   deadline_at: string | null;
   status: ItemStatus;
   work_block_count: number;
+  /** Total length of the item's work blocks. */
+  scheduled_minutes: number;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -51,11 +53,13 @@ export interface CreateWorkBlockInput {
 
 export type UpdateWorkBlockInput = Partial<{ start_at: string; end_at: string }>;
 
+/** Pre-sections Dropbox config value; only read when upgrading a stored workspace. */
 export type DropboxFilter = 'all' | 'scheduled' | 'unscheduled' | 'completed';
+export type DropboxSection = 'scheduled' | 'unscheduled' | 'completed';
 export type CalendarMode = 'week' | 'day';
 
 export type ViewInstance =
-  | { type: 'dropbox'; config: { filter: DropboxFilter } }
+  | { type: 'dropbox'; config: { sections: DropboxSection[] } }
   | { type: 'timeline'; config: Record<string, never> }
   | { type: 'calendar'; config: { mode: CalendarMode } };
 

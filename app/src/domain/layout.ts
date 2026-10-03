@@ -1,4 +1,5 @@
-import type { Layout, LayoutNode, SplitNode, ViewInstance, ViewNode } from '../api/types';
+import type { DropboxFilter, Layout, LayoutNode, SplitNode, ViewInstance, ViewNode } from '../api/types';
+import { DEFAULT_DROPBOX_SECTIONS, DROPBOX_SECTIONS, sectionsFromLegacyFilter } from './scheduling';
 
 export type DockEdge = 'left' | 'right' | 'top' | 'bottom' | 'center';
 
@@ -13,7 +14,7 @@ export const DEFAULT_LAYOUT: Layout = {
       {
         kind: 'split', id: 's-top', direction: 'row', sizes: [0.32, 0.68],
         children: [
-          { kind: 'view', id: 'v-dropbox', view: { type: 'dropbox', config: { filter: 'all' } } },
+          { kind: 'view', id: 'v-dropbox', view: { type: 'dropbox', config: { sections: [...DEFAULT_DROPBOX_SECTIONS] } } },
           { kind: 'view', id: 'v-calendar', view: { type: 'calendar', config: { mode: 'week' } } },
         ],
       },
@@ -43,7 +44,9 @@ function validView(v: unknown): boolean {
   const c = v.config;
   switch (v.type) {
     case 'dropbox':
-      return onlyKeys(c, ['filter']) && ['all', 'scheduled', 'unscheduled', 'completed'].includes(c.filter as string);
+      if (onlyKeys(c, ['filter']) && 'filter' in c) return ['all', 'scheduled', 'unscheduled', 'completed'].includes(c.filter as string); // legacy
+      return onlyKeys(c, ['sections']) && Array.isArray(c.sections) && c.sections.length > 0 &&
+        new Set(c.sections).size === c.sections.length && c.sections.every((s) => DROPBOX_SECTIONS.includes(s));
     case 'timeline':
       return Object.keys(c).length === 0;
     case 'calendar':
@@ -73,6 +76,21 @@ export function validateLayout(value: unknown): value is Layout {
     return n.children.every((c) => node(c, depth + 1));
   };
   return node(value.root, 1);
+}
+
+/**
+ * Rewrites pre-sections Dropbox configs ({filter}) as {sections}. Returns `layout` itself
+ * when nothing needed upgrading.
+ */
+export function upgradeLegacyConfigs(layout: Layout): Layout {
+  let changed = false;
+  const up = mapLayout(layout, (n) => {
+    if (n.kind !== 'view' || n.view.type !== 'dropbox' || !('filter' in n.view.config)) return n;
+    changed = true;
+    const { filter } = n.view.config as unknown as { filter: DropboxFilter };
+    return { ...n, view: { type: 'dropbox', config: { sections: sectionsFromLegacyFilter(filter) } } };
+  });
+  return changed ? up : layout;
 }
 
 // ---------- normalization ----------

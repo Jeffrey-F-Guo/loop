@@ -4,7 +4,7 @@ import { createFakeApi, makeBlock, makeItem } from '../test/fakeApi';
 import { createWrapper } from '../test/render';
 import { REVERTED_MESSAGE, useToastStore } from '../ui/toastStore';
 import { qk } from './keys';
-import { tempId, useCreateItem, useDeleteItem, useItems, useShiftItem, useUpdateItem } from './items';
+import { tempId, useCreateItem, useDeleteItem, useItems, useShiftItem, useUnscheduleItem, useUpdateItem } from './items';
 import { useWorkBlocks } from './workBlocks';
 import type { Item, WorkBlock } from './types';
 
@@ -112,6 +112,43 @@ describe('items hooks', () => {
     expect(blockCaches.every(([, data]) => !data || data.length === 0)).toBe(true);
     release();
     await waitFor(() => expect(api.items).toHaveLength(0));
+  });
+});
+
+describe('useUnscheduleItem (removing from the Timeline)', () => {
+  const seed = () => createFakeApi({
+    items: [makeItem({ id: 'i1', open_at: '2026-10-05T07:00:00.000Z', deadline_at: '2026-10-10T06:59:00.000Z' }), makeItem({ id: 'i2' })],
+    blocks: [makeBlock({ id: 'b1', item_id: 'i1' }), makeBlock({ id: 'b2', item_id: 'i2' })],
+  });
+  const range = { start: new Date('2026-10-05T07:00:00Z'), end: new Date('2026-10-12T07:00:00Z') };
+
+  it("clears the dates and every calendar entry, keeping the item, before the server answers", async () => {
+    const api = seed();
+    const { wrapper, qc } = createWrapper(api);
+    const { result } = renderHook(() => ({ items: useItems(), blocks: useWorkBlocks(range), un: useUnscheduleItem() }), { wrapper });
+    await waitFor(() => expect(result.current.blocks.data).toHaveLength(2));
+
+    const release = api.hold();
+    await act(async () => result.current.un.mutate({ id: 'i1' }));
+    const it = qc.getQueryData<Item[]>(qk.items)!.find((i) => i.id === 'i1')!;
+    expect(it).toMatchObject({ open_at: null, deadline_at: null, work_block_count: 0, scheduled_minutes: 0 });
+    await waitFor(() => expect(result.current.blocks.data!.map((b) => b.id)).toEqual(['b2']));
+    release();
+    await waitFor(() => expect(api.blocks.map((b) => b.id)).toEqual(['b2']));
+    expect(api.calls.at(-1)).toMatchObject({ method: 'POST', path: '/items/i1/unschedule' });
+    expect(api.items).toHaveLength(2);
+  });
+
+  it('a failed unschedule puts the dates and the blocks back', async () => {
+    const api = seed();
+    const { wrapper, qc } = createWrapper(api);
+    const { result } = renderHook(() => ({ items: useItems(), blocks: useWorkBlocks(range), un: useUnscheduleItem() }), { wrapper });
+    await waitFor(() => expect(result.current.blocks.data).toHaveLength(2));
+    api.failNext();
+    await act(async () => result.current.un.mutate({ id: 'i1' }));
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(REVERTED_MESSAGE));
+    expect(qc.getQueryData<Item[]>(qk.items)!.find((i) => i.id === 'i1')!.open_at).toBe('2026-10-05T07:00:00.000Z');
+    await waitFor(() => expect(result.current.blocks.data!.map((b) => b.id).sort()).toEqual(['b1', 'b2']));
   });
 });
 

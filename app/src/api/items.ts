@@ -36,7 +36,7 @@ export function useCreateItem() {
       const ts = new Date().toISOString();
       const temp: Item = {
         id, title: input.title.trim(), description: input.description ?? null, open_at: input.open_at ?? null,
-        deadline_at: input.deadline_at ?? null, status: 'active', work_block_count: 0,
+        deadline_at: input.deadline_at ?? null, status: 'active', work_block_count: 0, scheduled_minutes: 0,
         created_at: ts, updated_at: ts, completed_at: null,
       };
       qc.setQueryData<Item[]>(qk.items, (old = []) => [temp, ...old]);
@@ -104,6 +104,35 @@ export function useShiftItem() {
           end_at: shiftDays(new Date(b.end_at), days).toISOString(),
         });
       }
+      return { prevItem, prevBlocks };
+    },
+    onSuccess: (item) => qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === item.id ? item : i))),
+    onError: (_e, { id }, ctx) => {
+      if (ctx?.prevItem) qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === id ? ctx.prevItem! : i)));
+      ctx?.prevBlocks.forEach((b) => upsertBlockInCaches(qc, b));
+      showToast(REVERTED_MESSAGE);
+    },
+  });
+}
+
+/**
+ * Takes an item off the Timeline and Calendar: clears its dates and deletes all of its
+ * work blocks in one request. The item stays in the task list.
+ */
+export function useUnscheduleItem() {
+  const api = useApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationKey: ['items', 'unschedule'],
+    mutationFn: ({ id }: { id: string }) => api.request<Item>('POST', `/items/${id}/unschedule`),
+    onMutate: async ({ id }) => {
+      await Promise.all([qc.cancelQueries({ queryKey: qk.items }), qc.cancelQueries({ queryKey: qk.workBlocks })]);
+      const prevItem = qc.getQueryData<Item[]>(qk.items)?.find((i) => i.id === id);
+      const prevBlocks = [...collectBlocks(qc).values()].filter((b) => b.item_id === id);
+      qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === id
+        ? { ...i, open_at: null, deadline_at: null, work_block_count: 0, scheduled_minutes: 0 }
+        : i)));
+      removeBlocksFromCaches(qc, (b) => b.item_id === id);
       return { prevItem, prevBlocks };
     },
     onSuccess: (item) => qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === item.id ? item : i))),

@@ -6,7 +6,7 @@ import { barGeometry, timelineRows } from './geometry';
 const local = (d: number, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
 const item = (id: string, over: Partial<Item> = {}): Item => ({
   id, title: id, description: null, open_at: null, deadline_at: null, status: 'active',
-  work_block_count: 0, created_at: '', updated_at: '', completed_at: null, ...over,
+  work_block_count: 0, scheduled_minutes: 0, created_at: '', updated_at: '', completed_at: null, ...over,
 });
 const week = fromDateKey('2026-10-05');
 

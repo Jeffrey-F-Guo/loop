@@ -1,15 +1,17 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DropboxFilter } from '../../api/types';
+import type { DropboxSection } from '../../api/types';
 import { createFakeApi, makeItem } from '../../test/fakeApi';
 import { renderWithProviders } from '../../test/render';
 import { useItemDetailStore } from '../../ui/itemDetailStore';
 import { DropboxView } from './DropboxView';
 
-const view = (filter: DropboxFilter = 'all', setConfig = vi.fn()) => (
-  <DropboxView viewId="v1" config={{ filter }} setConfig={setConfig} />
+const view = (sections: DropboxSection[] = ['scheduled', 'unscheduled'], setConfig = vi.fn()) => (
+  <DropboxView viewId="v1" config={{ sections }} setConfig={setConfig} />
 );
+const sectionTitles = (s: DropboxSection) =>
+  within(screen.getByTestId(`dropbox-section-${s}`)).queryAllByTestId(/^item-row-/).map((r) => r.querySelector('[data-role="title"]')?.textContent);
 const titles = () => screen.queryAllByTestId(/^item-row-/).map((r) => r.querySelector('[data-role="title"]')?.textContent);
 
 beforeEach(() => useItemDetailStore.setState({ itemId: null, anchor: null }));
@@ -56,20 +58,49 @@ describe('DropboxView', () => {
     expect(titles()).toEqual(['C', 'B', 'A']);
   });
 
-  it('applies its own filter', async () => {
-    const api = createFakeApi({ items: [makeItem({ title: 'planned', work_block_count: 0 }), makeItem({ title: 'loose' })] });
+  const seeded = () => {
+    const api = createFakeApi({
+      items: [makeItem({ title: 'planned' }), makeItem({ title: 'loose' }), makeItem({ title: 'finished', status: 'completed' })],
+    });
     api.blocks.push({ id: 'b', item_id: api.items[0].id, start_at: '2026-10-06T16:00:00Z', end_at: '2026-10-06T17:00:00Z', created_at: '', updated_at: '' });
-    renderWithProviders(view('unscheduled'), { api });
-    await waitFor(() => expect(titles()).toEqual(['loose']));
+    return api;
+  };
+
+  it('lists each shown section under its own heading, Scheduled and Not scheduled by default', async () => {
+    renderWithProviders(view(), { api: seeded() });
+    await waitFor(() => expect(sectionTitles('scheduled')).toEqual(['planned']));
+    expect(sectionTitles('unscheduled')).toEqual(['loose']);
+    expect(screen.queryByTestId('dropbox-section-completed')).not.toBeInTheDocument();
+    expect(screen.getByTestId('dropbox-section-scheduled')).toHaveTextContent('Scheduled');
+    expect(screen.getByTestId('dropbox-section-unscheduled')).toHaveTextContent('Not scheduled');
   });
 
-  it('changing the filter calls setConfig', async () => {
+  it('shows all three sections at once when turned on', async () => {
+    renderWithProviders(view(['scheduled', 'unscheduled', 'completed']), { api: seeded() });
+    await waitFor(() => expect(sectionTitles('completed')).toEqual(['finished']));
+    expect(sectionTitles('scheduled')).toEqual(['planned']);
+    expect(sectionTitles('unscheduled')).toEqual(['loose']);
+  });
+
+  it('section toggles replace the filter: turning one on or off calls setConfig', async () => {
     const user = userEvent.setup();
     const setConfig = vi.fn();
-    renderWithProviders(view('all', setConfig));
-    await user.click(await screen.findByTestId('dropbox-filter'));
-    await user.click(screen.getByTestId('dropbox-filter-option-scheduled'));
-    expect(setConfig).toHaveBeenCalledWith({ filter: 'scheduled' });
+    renderWithProviders(view(['scheduled', 'unscheduled'], setConfig));
+    expect(await screen.findByTestId('dropbox-section-toggle-scheduled')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('dropbox-section-toggle-completed')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('dropbox-filter')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('dropbox-section-toggle-completed'));
+    expect(setConfig).toHaveBeenLastCalledWith({ sections: ['scheduled', 'unscheduled', 'completed'] });
+    await user.click(screen.getByTestId('dropbox-section-toggle-scheduled'));
+    expect(setConfig).toHaveBeenLastCalledWith({ sections: ['unscheduled'] });
+  });
+
+  it('the only section shown cannot be turned off', async () => {
+    const user = userEvent.setup();
+    const setConfig = vi.fn();
+    renderWithProviders(view(['completed'], setConfig));
+    await user.click(await screen.findByTestId('dropbox-section-toggle-completed'));
+    expect(setConfig).not.toHaveBeenCalled();
   });
 
   it('completing an item removes it from the active list', async () => {

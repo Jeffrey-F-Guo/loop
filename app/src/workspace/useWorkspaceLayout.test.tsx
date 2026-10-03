@@ -19,8 +19,8 @@ describe('useWorkspaceLayout', () => {
     await waitFor(() => expect(result.current.layout).not.toBeNull());
 
     act(() => {
-      result.current.update((l) => setViewConfig(l, 'v-dropbox', { filter: 'scheduled' }));
-      result.current.update((l) => setViewConfig(l, 'v-dropbox', { filter: 'unscheduled' }));
+      result.current.update((l) => setViewConfig(l, 'v-dropbox', { sections: ['scheduled'] }));
+      result.current.update((l) => setViewConfig(l, 'v-dropbox', { sections: ['unscheduled'] }));
       result.current.update((l) => setViewConfig(l, 'v-calendar', { mode: 'day' }));
     });
     expect(puts(api)).toHaveLength(0);
@@ -44,12 +44,26 @@ describe('useWorkspaceLayout', () => {
     await waitFor(() => expect(puts(api)).toHaveLength(1));
   });
 
+  it('upgrades a stored pre-sections Dropbox config and re-saves it', async () => {
+    const stored = structuredClone(DEFAULT_LAYOUT);
+    const json = JSON.stringify(stored).replace('{"sections":["scheduled","unscheduled"]}', '{"filter":"completed"}');
+    const api = createFakeApi({ layout: JSON.parse(json) as Layout });
+    const { wrapper } = createWrapper(api);
+    const { result } = renderHook(() => useWorkspaceLayout(), { wrapper });
+    await waitFor(() => expect(result.current.layout).toEqual(setViewConfig(DEFAULT_LAYOUT, 'v-dropbox', { sections: ['completed'] })));
+    await act(async () => {
+      vi.advanceTimersByTime(SAVE_DEBOUNCE_MS + 10);
+    });
+    await waitFor(() => expect(puts(api)).toHaveLength(1));
+    expect(JSON.stringify(puts(api)[0].body)).toContain('{"sections":["completed"]}');
+  });
+
   it('flushes a pending save on unmount', async () => {
     const api = createFakeApi();
     const { wrapper } = createWrapper(api);
     const { result, unmount } = renderHook(() => useWorkspaceLayout(), { wrapper });
     await waitFor(() => expect(result.current.layout).not.toBeNull());
-    act(() => result.current.update((l) => setViewConfig(l, 'v-dropbox', { filter: 'completed' })));
+    act(() => result.current.update((l) => setViewConfig(l, 'v-dropbox', { sections: ['completed'] })));
     unmount();
     await waitFor(() => expect(puts(api)).toHaveLength(1));
   });

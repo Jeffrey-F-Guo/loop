@@ -1,10 +1,11 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { qk } from '../../api/keys';
 import { useDragStore } from '../../dnd/dragStore';
 import { createFakeApi, makeBlock, makeItem } from '../../test/fakeApi';
 import { renderWithProviders } from '../../test/render';
+import { useItemDetailStore } from '../../ui/itemDetailStore';
 import { TimelineView } from './TimelineView';
 
 const local = (d: number, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
@@ -36,6 +37,29 @@ describe('TimelineView', () => {
     expect(bar).toHaveAttribute('data-deadline-date', '2026-10-09');
     expect(screen.getByTestId('timeline-day-2026-10-05')).toBeInTheDocument();
     expect(screen.getByTestId('timeline-day-2026-10-11')).toBeInTheDocument();
+  });
+
+  it("shows each task's total scheduled time on its bar or marker", async () => {
+    const api = createFakeApi({
+      items: [ranged(), makeItem({ id: 'm', deadline_at: local(8, 23, 59) }), makeItem({ id: 'none', open_at: local(5), deadline_at: local(6, 23, 59) })],
+      blocks: [
+        makeBlock({ item_id: 'i1', start_at: local(6, 19), end_at: local(6, 20) }),
+        makeBlock({ item_id: 'i1', start_at: local(13, 9), end_at: local(13, 10, 30) }), // another week still counts
+        makeBlock({ item_id: 'm', start_at: local(7, 9), end_at: local(7, 9, 45) }),
+      ],
+    });
+    renderWithProviders(view, { api });
+    expect(await screen.findByTestId('timeline-time-i1')).toHaveTextContent('2h 30m');
+    expect(screen.getByTestId('timeline-time-m')).toHaveTextContent('45m');
+    await screen.findByTestId('timeline-bar-none');
+    expect(screen.queryByTestId('timeline-time-none')).not.toBeInTheDocument();
+  });
+
+  it('clicking a bar opens the task with the Timeline as its context', async () => {
+    useItemDetailStore.setState({ itemId: null, anchor: null, source: { from: 'list' } });
+    renderWithProviders(view, { api: createFakeApi({ items: [ranged()] }) });
+    fireEvent.click(within(await screen.findByTestId('timeline-bar-i1')).getByText('Physics'));
+    expect(useItemDetailStore.getState()).toMatchObject({ itemId: 'i1', source: { from: 'timeline' } });
   });
 
   it('renders a deadline-only item as a marker', async () => {

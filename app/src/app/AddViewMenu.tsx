@@ -1,4 +1,5 @@
 import { addView } from '../domain/layout';
+import { DEFAULT_DROPBOX_SECTIONS } from '../domain/scheduling';
 import { Menu } from '../ui/Menu';
 import { tokens } from '../ui/tokens';
 import { useLayout } from '../workspace/useWorkspaceLayout';
@@ -14,7 +15,7 @@ export function AddViewMenu() {
         </button>
       )}
       items={[
-        { key: 'dropbox', label: 'Dropbox', testID: 'add-view-dropbox', onSelect: () => update((l) => addView(l, { type: 'dropbox', config: { filter: 'all' } })) },
+        { key: 'dropbox', label: 'Dropbox', testID: 'add-view-dropbox', onSelect: () => update((l) => addView(l, { type: 'dropbox', config: { sections: [...DEFAULT_DROPBOX_SECTIONS] } })) },
         { key: 'calendar', label: 'Calendar', testID: 'add-view-calendar', onSelect: () => update((l) => addView(l, { type: 'calendar', config: { mode: 'week' } })) },
         { key: 'timeline', label: 'Timeline', testID: 'add-view-timeline', onSelect: () => update((l) => addView(l, { type: 'timeline', config: {} })) },
       ]}

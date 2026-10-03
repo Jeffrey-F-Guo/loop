@@ -4,7 +4,7 @@ import { useItemDetailStore } from '../../ui/itemDetailStore';
 import { ItemDetail } from './ItemDetail';
 
 export function ItemDetailHost() {
-  const { itemId, anchor, close } = useItemDetailStore();
+  const { itemId, anchor, source, close } = useItemDetailStore();
   const item = useItemsById().get(itemId ?? '');
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export function ItemDetailHost() {
     <>
       <div onMouseDown={close} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
       <div style={{ position: 'fixed', left, top, width, zIndex: 41 }}>
-        <ItemDetail key={item.id} item={item} onClose={close} />
+        <ItemDetail key={item.id} item={item} source={source} onClose={close} />
       </div>
     </>
   );

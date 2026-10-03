@@ -69,7 +69,7 @@ export function BlockView({ block, item, viewId, lane, lanes }: {
           resizedRef.current = false;
           return;
         }
-        if (!temp) openDetail(block.item_id, toRect(e.currentTarget.getBoundingClientRect()));
+        if (!temp) openDetail(block.item_id, toRect(e.currentTarget.getBoundingClientRect()), { from: 'calendar', blockId: block.id });
       }}
       style={{
         position: 'absolute', top: (startMin / 60) * HOUR_PX + 1, height: Math.max(height - 2, 10),

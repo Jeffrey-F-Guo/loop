@@ -4,7 +4,7 @@ import { useApi } from '../api/ApiProvider';
 import { qk } from '../api/keys';
 import type { Layout, WorkspaceResponse } from '../api/types';
 import { useWorkspace } from '../api/workspace';
-import { DEFAULT_LAYOUT, normalize, validateLayout } from '../domain/layout';
+import { DEFAULT_LAYOUT, normalize, upgradeLegacyConfigs, validateLayout } from '../domain/layout';
 import { showToast } from '../ui/toastStore';
 
 export const SAVE_DEBOUNCE_MS = 500;
@@ -54,6 +54,12 @@ export function useWorkspaceLayout(): LayoutApi {
     if (data && !validateLayout(data.layout)) {
       qc.setQueryData<WorkspaceResponse>(qk.workspace, { ...data, layout: DEFAULT_LAYOUT });
       schedule(DEFAULT_LAYOUT);
+      return;
+    }
+    const upgraded = data && upgradeLegacyConfigs(data.layout);
+    if (data && upgraded !== data.layout) {
+      qc.setQueryData<WorkspaceResponse>(qk.workspace, { ...data, layout: upgraded! });
+      schedule(upgraded!);
     }
   }, [data, qc, schedule]);
 
@@ -74,7 +80,7 @@ export function useWorkspaceLayout(): LayoutApi {
   }, [qc, schedule]);
 
   return useMemo(() => ({
-    layout: data ? (valid ? data.layout : DEFAULT_LAYOUT) : null,
+    layout: data ? (valid ? upgradeLegacyConfigs(data.layout) : DEFAULT_LAYOUT) : null,
     isLoading: query.isLoading,
     update,
   }), [data, valid, query.isLoading, update]);

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Layout, LayoutNode, SplitNode, ViewNode } from '../api/types';
 import {
   DEFAULT_LAYOUT, addView, dockView, duplicateView, findView, listViews, normalize, removeView,
-  setSizes, setViewConfig, validateLayout,
+  setSizes, setViewConfig, upgradeLegacyConfigs, validateLayout,
 } from './layout';
 
 const leaf = (id: string): ViewNode => ({ kind: 'view', id, view: { type: 'timeline', config: {} } });
@@ -25,11 +25,30 @@ describe('validateLayout', () => {
     ['duplicate ids', L(split('s', 'row', [leaf('a'), leaf('a')]))],
     ['bad sizes', L(split('s', 'row', [leaf('a'), leaf('b')], [0.5, 0.2]))],
     ['unknown view type', L({ kind: 'view', id: 'a', view: { type: 'kanban', config: {} } } as unknown as LayoutNode)],
-    ['bad dropbox filter', L({ kind: 'view', id: 'a', view: { type: 'dropbox', config: { filter: 'later' } } } as unknown as LayoutNode)],
+    ['bad legacy dropbox filter', L({ kind: 'view', id: 'a', view: { type: 'dropbox', config: { filter: 'later' } } } as unknown as LayoutNode)],
+    ['no dropbox sections', L({ kind: 'view', id: 'a', view: { type: 'dropbox', config: { sections: [] } } })],
+    ['repeated dropbox section', L({ kind: 'view', id: 'a', view: { type: 'dropbox', config: { sections: ['completed', 'completed'] } } })],
+    ['unknown dropbox section', L({ kind: 'view', id: 'a', view: { type: 'dropbox', config: { sections: ['all'] } } } as unknown as LayoutNode)],
     ['timeline config with keys', L({ kind: 'view', id: 'a', view: { type: 'timeline', config: { zoom: 1 } } } as unknown as LayoutNode)],
   ])('rejects %s', (_name, value) => {
     expect(validateLayout(value)).toBe(false);
   });
+});
+
+describe('upgradeLegacyConfigs', () => {
+  const legacy = (filter: string) => L(split('s', 'row', [
+    { kind: 'view', id: 'd', view: { type: 'dropbox', config: { filter } } } as unknown as LayoutNode, leaf('t'),
+  ]));
+  it('accepts a stored pre-sections Dropbox config, so the workspace still loads', () =>
+    expect(validateLayout(legacy('completed'))).toBe(true));
+  it('rewrites a legacy filter as sections', () => {
+    const up = upgradeLegacyConfigs(legacy('all'));
+    expect(findView(up, 'd')?.view).toEqual({ type: 'dropbox', config: { sections: ['scheduled', 'unscheduled'] } });
+    expect(findView(up, 't')?.view).toEqual(leaf('t').view);
+    expect(validateLayout(up)).toBe(true);
+  });
+  it('returns the same object when nothing needs upgrading', () =>
+    expect(upgradeLegacyConfigs(DEFAULT_LAYOUT)).toBe(DEFAULT_LAYOUT));
 });
 
 describe('normalize', () => {
@@ -46,9 +65,9 @@ describe('normalize', () => {
 
 describe('view operations', () => {
   it('setViewConfig changes only that view', () => {
-    const l = setViewConfig(DEFAULT_LAYOUT, 'v-dropbox', { filter: 'unscheduled' });
-    expect(findView(l, 'v-dropbox')?.view).toEqual({ type: 'dropbox', config: { filter: 'unscheduled' } });
-    expect(findView(DEFAULT_LAYOUT, 'v-dropbox')?.view).toEqual({ type: 'dropbox', config: { filter: 'all' } });
+    const l = setViewConfig(DEFAULT_LAYOUT, 'v-dropbox', { sections: ['unscheduled'] });
+    expect(findView(l, 'v-dropbox')?.view).toEqual({ type: 'dropbox', config: { sections: ['unscheduled'] } });
+    expect(findView(DEFAULT_LAYOUT, 'v-dropbox')?.view).toEqual({ type: 'dropbox', config: { sections: ['scheduled', 'unscheduled'] } });
   });
 
   it('removeView collapses the parent split', () => {
@@ -64,8 +83,8 @@ describe('view operations', () => {
     const top = (l.root as SplitNode).children[0] as SplitNode;
     expect(top.direction).toBe('row');
     expect(sum(top.sizes)).toBeCloseTo(1);
-    const again = setViewConfig(l, 'v-copy', { filter: 'scheduled' });
-    expect(findView(again, 'v-dropbox')?.view.config).toEqual({ filter: 'all' });
+    const again = setViewConfig(l, 'v-copy', { sections: ['completed'] });
+    expect(findView(again, 'v-dropbox')?.view.config).toEqual({ sections: ['scheduled', 'unscheduled'] });
   });
 
   it('addView places the new view at the right edge, or as root when empty', () => {

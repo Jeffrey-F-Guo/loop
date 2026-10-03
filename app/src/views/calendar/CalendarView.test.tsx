@@ -93,6 +93,8 @@ describe('CalendarView', () => {
     expect(useItemDetailStore.getState().itemId).toBeNull();
     fireEvent.click(block); // a later, genuine click still opens it
     expect(useItemDetailStore.getState().itemId).toBe('i1');
+    // Opened from the Calendar, so its remove action is "remove this entry".
+    expect(useItemDetailStore.getState().source).toEqual({ from: 'calendar', blockId: 'b1' });
   });
 
   it('resizing stops at the item deadline', async () => {
