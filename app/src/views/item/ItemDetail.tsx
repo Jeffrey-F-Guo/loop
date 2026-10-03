@@ -117,7 +117,15 @@ export function ItemDetail({ item, onClose }: { item: Item; onClose: () => void 
         </div>
       ))}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 18 }}>
+        <button
+          data-testid="item-complete-toggle"
+          onClick={() => save({ status: item.status === 'completed' ? 'active' : 'completed' })}
+          style={{ border: `1px solid ${tokens.color.border}`, borderRadius: tokens.radius.md, background: 'transparent', color: tokens.color.text, padding: '5px 10px' }}
+        >
+          {item.status === 'completed' ? 'Reopen' : 'Mark complete'}
+        </button>
+        <span style={{ flex: 1 }} />
         <button
           data-testid="item-delete"
           onClick={() => {
@@ -131,13 +139,11 @@ export function ItemDetail({ item, onClose }: { item: Item; onClose: () => void 
         </button>
         <button
           data-testid="item-done"
-          onClick={() => {
-            save({ status: item.status === 'completed' ? 'active' : 'completed' });
-            onClose();
-          }}
+          // Edits already saved as they were made (title/description commit on the blur this click causes).
+          onClick={onClose}
           style={{ border: 'none', borderRadius: tokens.radius.md, background: tokens.color.accent, color: '#fff', padding: '6px 14px', fontWeight: 500 }}
         >
-          {item.status === 'completed' ? 'Reopen' : 'Done'}
+          Done
         </button>
       </div>
     </div>

@@ -73,12 +73,27 @@ describe('ItemDetail', () => {
     await waitFor(() => expect(api.blocks).toHaveLength(0));
   });
 
-  it('Done completes the item and closes', async () => {
+  it('Done saves pending edits and closes without completing the item', async () => {
     const user = userEvent.setup();
     const { api } = setup();
-    await user.click(await screen.findByTestId('item-done'));
-    await waitFor(() => expect(lastPatch(api)?.body).toEqual({ status: 'completed' }));
+    const title = await screen.findByTestId('item-title');
+    await user.clear(title);
+    await user.type(title, 'Physics HW'); // no Enter / blur yet
+    await user.click(screen.getByTestId('item-done'));
+    await waitFor(() => expect(lastPatch(api)?.body).toEqual({ title: 'Physics HW' }));
+    expect(api.calls.filter((c) => c.method === 'PATCH')).toHaveLength(1);
+    expect(api.items[0].status).toBe('active');
     expect(useItemDetailStore.getState().itemId).toBeNull();
+  });
+
+  it('Mark complete completes the item and the button becomes Reopen', async () => {
+    const user = userEvent.setup();
+    const { api } = setup();
+    await user.click(await screen.findByTestId('item-complete-toggle'));
+    await waitFor(() => expect(lastPatch(api)?.body).toEqual({ status: 'completed' }));
+    expect(await screen.findByTestId('item-complete-toggle')).toHaveTextContent('Reopen');
+    await user.click(screen.getByTestId('item-complete-toggle'));
+    await waitFor(() => expect(lastPatch(api)?.body).toEqual({ status: 'active' }));
   });
 
   it('Delete asks for confirmation first', async () => {

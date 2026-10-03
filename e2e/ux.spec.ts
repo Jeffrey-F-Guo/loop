@@ -46,6 +46,8 @@ test('FEATURE_DESIGN §28: discoverable planning flow', async ({ page }) => {
 
   // 7. Mark Item complete.
   await row.getByText('Physics assignment').click();
+  await page.getByTestId('item-complete-toggle').click();
+  await expect(page.getByTestId('item-complete-toggle')).toHaveText('Reopen');
   await page.getByTestId('item-done').click();
   await expect(page.getByTestId(`item-row-${id}`)).toHaveCount(0);
   await expect(page.getByTestId(`timeline-bar-${id}`)).toHaveCount(0);
