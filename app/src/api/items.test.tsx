@@ -46,6 +46,44 @@ describe('items hooks', () => {
     expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(REVERTED_MESSAGE);
   });
 
+  it('a failed update reverts only that item, keeping a create that succeeded meanwhile', async () => {
+    const api = createFakeApi({ items: [makeItem({ id: 'b', title: 'B' })] });
+    const { wrapper, qc } = createWrapper(api);
+    const { result } = renderHook(() => ({ items: useItems(), create: useCreateItem(), update: useUpdateItem() }), { wrapper });
+    await waitFor(() => expect(result.current.items.isSuccess).toBe(true));
+
+    api.failNext((m) => m === 'PATCH');
+    const release = api.hold();
+    await act(async () => {
+      result.current.create.mutate({ tempId: tempId('i'), input: { title: 'A' } });
+      result.current.update.mutate({ id: 'b', patch: { title: 'B2' } });
+    });
+    release(); // POST settles first (succeeds), then PATCH fails
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(REVERTED_MESSAGE));
+    const items = qc.getQueryData<Item[]>(qk.items)!;
+    expect(items.map((i) => i.title)).toEqual(['A', 'B']);
+    expect(items.every((i) => !i.id.startsWith('tmp-'))).toBe(true);
+  });
+
+  it('a failed delete puts back only that item, keeping a create that succeeded meanwhile', async () => {
+    const api = createFakeApi({ items: [makeItem({ id: 'b', title: 'B' })] });
+    const { wrapper, qc } = createWrapper(api);
+    const { result } = renderHook(() => ({ items: useItems(), create: useCreateItem(), del: useDeleteItem() }), { wrapper });
+    await waitFor(() => expect(result.current.items.isSuccess).toBe(true));
+
+    api.failNext((m) => m === 'DELETE');
+    const release = api.hold();
+    await act(async () => {
+      result.current.create.mutate({ tempId: tempId('i'), input: { title: 'A' } });
+      result.current.del.mutate({ id: 'b' });
+    });
+    release();
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(REVERTED_MESSAGE));
+    const items = qc.getQueryData<Item[]>(qk.items)!;
+    expect(items.map((i) => i.title)).toEqual(['A', 'B']);
+    expect(items.every((i) => !i.id.startsWith('tmp-'))).toBe(true);
+  });
+
   it('completing an item sets status and completed_at optimistically', async () => {
     const api = createFakeApi({ items: [makeItem({ id: 'i1' })] });
     const { wrapper, qc } = createWrapper(api);

@@ -70,8 +70,10 @@ export function useUpdateItem() {
       return { prev };
     },
     onSuccess: (item) => qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === item.id ? item : i))),
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(qk.items, ctx.prev);
+    // Revert only this item: restoring the whole snapshot would undo concurrent changes (e.g. a create that landed meanwhile).
+    onError: (_e, { id }, ctx) => {
+      const before = ctx?.prev?.find((i) => i.id === id);
+      if (before) qc.setQueryData<Item[]>(qk.items, (old = []) => old.map((i) => (i.id === id ? before : i)));
       showToast(REVERTED_MESSAGE);
     },
   });
@@ -91,8 +93,14 @@ export function useDeleteItem() {
       removeBlocksFromCaches(qc, (b) => b.item_id === id);
       return { prev, blocks };
     },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(qk.items, ctx.prev);
+    // Put back only this item, at its old position; other items may have changed meanwhile.
+    onError: (_e, { id }, ctx) => {
+      const idx = ctx?.prev?.findIndex((i) => i.id === id) ?? -1;
+      if (ctx?.prev && idx >= 0) {
+        const before = ctx.prev[idx];
+        qc.setQueryData<Item[]>(qk.items, (old = []) =>
+          old.some((i) => i.id === id) ? old : [...old.slice(0, idx), before, ...old.slice(idx)]);
+      }
       if (ctx?.blocks) restoreBlocks(qc, ctx.blocks);
       showToast(REVERTED_MESSAGE);
     },
