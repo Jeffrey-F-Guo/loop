@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "root": {
+    "kind": "split", "id": "s-root", "direction": "column", "sizes": [0.62, 0.38],
+    "children": [
+      {
+        "kind": "split", "id": "s-top", "direction": "row", "sizes": [0.32, 0.68],
+        "children": [
+          { "kind": "view", "id": "v-dropbox", "view": { "type": "dropbox", "config": { "filter": "all" } } },
+          { "kind": "view", "id": "v-calendar", "view": { "type": "calendar", "config": { "mode": "week" } } }
+        ]
+      },
+      { "kind": "view", "id": "v-timeline", "view": { "type": "timeline", "config": {} } }
+    ]
+  }
+}
