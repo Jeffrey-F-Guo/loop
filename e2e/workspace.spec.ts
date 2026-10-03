@@ -38,16 +38,23 @@ test('views can be moved, resized, closed, and added, and the arrangement surviv
   await expect.poll(async () => (await box(page, 'v-timeline')).x).toBeGreaterThan((await box(page, 'v-calendar')).x);
 });
 
-test('the Dropbox filter menu opens inside its panel', async ({ page }) => {
+test('the task list shows Scheduled and Not scheduled by default and can show all three lists', async ({ page }) => {
   await openApp(page);
   const dropbox = page.getByTestId('panel-v-dropbox');
-  await dropbox.getByTestId('dropbox-filter').click();
+  await expect(dropbox.getByTestId('dropbox-input')).toBeVisible();
+  await dropbox.getByTestId('dropbox-input').fill('Tidy desk');
+  await dropbox.getByTestId('dropbox-input').press('Enter');
+  await expect(dropbox.getByTestId('dropbox-section-unscheduled').getByText('Tidy desk')).toBeVisible();
+  await expect(dropbox.getByTestId('dropbox-section-scheduled')).toBeVisible();
+  await expect(dropbox.getByTestId('dropbox-section-completed')).toHaveCount(0);
+
   const panel = (await dropbox.boundingBox())!;
-  for (const f of ['all', 'unscheduled', 'scheduled', 'completed']) {
-    const b = (await page.getByTestId(`dropbox-filter-option-${f}`).boundingBox())!;
+  for (const s of ['scheduled', 'unscheduled', 'completed']) {
+    const b = (await dropbox.getByTestId(`dropbox-section-toggle-${s}`).boundingBox())!;
     expect(b.x).toBeGreaterThanOrEqual(panel.x);
     expect(b.x + b.width).toBeLessThanOrEqual(panel.x + panel.width);
   }
-  await page.getByTestId('dropbox-filter-option-completed').click({ timeout: 3000 }); // must not be covered
-  await expect(dropbox.getByTestId('dropbox-filter')).toHaveAttribute('data-filter', 'completed');
+  await dropbox.getByTestId('dropbox-section-toggle-completed').click({ timeout: 3000 }); // must not be covered
+  await expect(dropbox.getByTestId('dropbox-section-completed')).toBeVisible();
+  await expect(dropbox.getByTestId(/^dropbox-section-(?!toggle-)/)).toHaveCount(3);
 });

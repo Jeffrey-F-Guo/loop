@@ -58,15 +58,14 @@ test('FUNCTIONAL_SPEC §20: full MVP lifecycle', async ({ page }) => {
   const a = dropboxes.nth(0);
   const b = dropboxes.nth(1);
 
-  // 11–12. A = Unscheduled, B = Scheduled (and wait until that layout is saved).
+  // 11–12. A shows only Not scheduled, B only Scheduled (and wait until that layout is saved).
   const layoutSaved = page.waitForResponse((r) => {
     const body = r.request().postData() ?? '';
-    return r.url().endsWith('/api/v1/workspace') && r.request().method() === 'PUT' && body.includes('"unscheduled"') && body.includes('"scheduled"');
+    return r.url().endsWith('/api/v1/workspace') && r.request().method() === 'PUT' &&
+      body.includes('"sections":["unscheduled"]') && body.includes('"sections":["scheduled"]');
   });
-  await a.getByTestId('dropbox-filter').click();
-  await page.getByTestId('dropbox-filter-option-unscheduled').click();
-  await b.getByTestId('dropbox-filter').click();
-  await page.getByTestId('dropbox-filter-option-scheduled').click();
+  await a.getByTestId('dropbox-section-toggle-scheduled').click();
+  await b.getByTestId('dropbox-section-toggle-unscheduled').click();
 
   // 13. Assignment appears under Scheduled only.
   await expect(b.getByTestId(`item-row-${id}`)).toBeVisible();
@@ -92,8 +91,10 @@ test('FUNCTIONAL_SPEC §20: full MVP lifecycle', async ({ page }) => {
   await page.reload();
   const reopened = page.locator('[data-view-type="dropbox"]');
   await expect(reopened).toHaveCount(2);
-  await expect(reopened.nth(0).getByTestId('dropbox-filter')).toHaveAttribute('data-filter', 'unscheduled');
-  await expect(reopened.nth(1).getByTestId('dropbox-filter')).toHaveAttribute('data-filter', 'scheduled');
+  await expect(reopened.nth(0).getByTestId('dropbox-section-toggle-scheduled')).toHaveAttribute('aria-pressed', 'false');
+  await expect(reopened.nth(0).getByTestId('dropbox-section-toggle-unscheduled')).toHaveAttribute('aria-pressed', 'true');
+  await expect(reopened.nth(1).getByTestId('dropbox-section-toggle-scheduled')).toHaveAttribute('aria-pressed', 'true');
+  await expect(reopened.nth(1).getByTestId('dropbox-section-toggle-unscheduled')).toHaveAttribute('aria-pressed', 'false');
   await expect(reopened.nth(1).getByTestId(`item-row-${id}`)).toBeVisible();
   await expect(page.getByTestId(`calendar-block-${blockId}`)).toHaveAttribute('data-start', `${wed}T19:00`);
   await expect(page.getByTestId(`timeline-bar-${id}`)).toHaveAttribute('data-deadline-date', fri);
