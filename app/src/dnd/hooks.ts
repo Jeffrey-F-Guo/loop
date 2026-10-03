@@ -4,8 +4,15 @@ import { useDragStore } from './dragStore';
 import { ACCEPTS, toRect, type DragPayload, type DropData, type DroppableData, type Rect } from './types';
 
 export function useTypedDraggable({ id, payload, disabled }: { id: string; payload: DragPayload; disabled?: boolean }) {
-  const d = useDraggable({ id, data: { payload }, disabled });
-  return { setNodeRef: d.setNodeRef, listeners: d.listeners, attributes: d.attributes, isDragging: d.isDragging };
+  const nodeRef = useRef<HTMLElement | null>(null);
+  // Lets DndProvider measure the grab offset at drag start (see initialRect.ts).
+  const getRect = useCallback((): Rect | null => (nodeRef.current ? toRect(nodeRef.current.getBoundingClientRect()) : null), []);
+  const d = useDraggable({ id, data: { payload, getRect }, disabled });
+  const setNodeRef = useCallback((el: HTMLElement | null) => {
+    nodeRef.current = el;
+    d.setNodeRef(el);
+  }, [d.setNodeRef]);
+  return { setNodeRef, listeners: d.listeners, attributes: d.attributes, isDragging: d.isDragging };
 }
 
 export function useTypedDroppable({ id, drop }: { id: string; drop: DropData }) {

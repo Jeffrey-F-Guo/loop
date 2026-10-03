@@ -10,7 +10,8 @@ import { useCreateWorkBlock, useUpdateWorkBlock } from '../api/workBlocks';
 import { tokens } from '../ui/tokens';
 import { useDragStore } from './dragStore';
 import { planDrop } from './planDrop';
-import { toRect, type DragPayload, type DropAction, type DroppableData, type Point } from './types';
+import { initialRectOf } from './initialRect';
+import type { DragPayload, DropAction, DroppableData, Point } from './types';
 
 export type DockAction = Extract<DropAction, { type: 'dock' }>;
 
@@ -47,11 +48,10 @@ export function DndProvider({ children, onDock }: { children: ReactNode; onDock?
     const payload = e.active.data.current?.payload as DragPayload | undefined;
     if (!payload) return;
     const ev = e.activatorEvent as PointerEvent;
-    const initial = e.active.rect.current.initial;
     store.getState().begin({
       payload,
       pointerStart: { x: ev.clientX, y: ev.clientY },
-      activeInitialRect: initial ? toRect(initial) : null,
+      activeInitialRect: initialRectOf(e.active),
     });
     stopTracking();
     moveListener.current = (pe: PointerEvent) => store.getState().move({ x: pe.clientX, y: pe.clientY });
