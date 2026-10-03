@@ -54,10 +54,6 @@ func New(st *store.Store, a auth.Authenticator, opts Options) http.Handler {
 	return s.recoverer(cors(opts.CORSOrigins, root))
 }
 
-// Task 7 replaces these two with real route registration.
-func (s *Server) registerWorkBlocks(*http.ServeMux) {}
-func (s *Server) registerWorkspace(*http.ServeMux)  {}
-
 func userOf(r *http.Request) uuid.UUID {
 	id, _ := auth.UserFrom(r.Context())
 	return id
