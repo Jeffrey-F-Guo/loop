@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeApi, makeBlock, makeItem } from '../../test/fakeApi';
 import { renderWithProviders } from '../../test/render';
 import { HOUR_PX } from '../../domain/time';
+import { useItemDetailStore } from '../../ui/itemDetailStore';
 import { CalendarView } from './CalendarView';
 
 const local = (d: number, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
@@ -76,6 +77,21 @@ describe('CalendarView', () => {
     fireEvent.pointerDown(handle, { clientY: 1000 + HOUR_PX, pointerId: 1 });
     fireEvent.pointerUp(window, { clientY: 900, pointerId: 1 });
     await waitFor(() => expect(lastPatch(api)?.body).toEqual({ end_at: local(6, 19, 15) }));
+  });
+
+  it('finishing a resize does not open the item detail', async () => {
+    useItemDetailStore.setState({ itemId: null, anchor: null });
+    renderWithProviders(<CalendarView viewId="c1" config={{ mode: 'week' }} setConfig={vi.fn()} />, { api: seed() });
+    const block = await screen.findByTestId('calendar-block-b1');
+    vi.spyOn(block, 'getBoundingClientRect').mockReturnValue({ top: 1000, left: 0, width: 100, height: HOUR_PX, right: 100, bottom: 1000 + HOUR_PX, x: 0, y: 1000, toJSON() {} } as DOMRect);
+    const handle = screen.getByTestId('calendar-block-resize-b1');
+    fireEvent.pointerDown(handle, { clientY: 1000 + HOUR_PX, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientY: 1000 + 2 * HOUR_PX, pointerId: 1 });
+    // The browser then dispatches a click on the common ancestor of mousedown/mouseup: the block.
+    fireEvent.click(block);
+    expect(useItemDetailStore.getState().itemId).toBeNull();
+    fireEvent.click(block); // a later, genuine click still opens it
+    expect(useItemDetailStore.getState().itemId).toBe('i1');
   });
 
   it('shows the empty state when nothing is scheduled', async () => {

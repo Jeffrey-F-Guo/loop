@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { isTempId } from '../../api/items';
 import type { Item, WorkBlock } from '../../api/types';
 import { useUpdateWorkBlock } from '../../api/workBlocks';
@@ -21,6 +21,8 @@ export function BlockView({ block, item, viewId, lane, lanes }: {
   const update = useUpdateWorkBlock();
   const openDetail = useItemDetailStore((s) => s.open);
   const [previewEnd, setPreviewEnd] = useState<number | null>(null);
+  // The click that follows a resize's pointerup belongs to the resize, not to "open detail".
+  const resizedRef = useRef(false);
 
   const start = new Date(block.start_at);
   const end = new Date(block.end_at);
@@ -40,6 +42,7 @@ export function BlockView({ block, item, viewId, lane, lanes }: {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       setPreviewEnd(null);
+      resizedRef.current = true;
       const next = atMinutes(start, endAt(ev.clientY)).toISOString();
       if (Date.parse(next) !== Date.parse(block.end_at)) update.mutate({ id: block.id, patch: { end_at: next } });
     };
@@ -56,7 +59,13 @@ export function BlockView({ block, item, viewId, lane, lanes }: {
       data-testid={`calendar-block-${block.id}`}
       data-start={toLocalStamp(start)}
       data-end={toLocalStamp(previewEnd === null ? end : atMinutes(start, previewEnd))}
-      onClick={(e) => !temp && openDetail(block.item_id, toRect(e.currentTarget.getBoundingClientRect()))}
+      onClick={(e) => {
+        if (resizedRef.current) {
+          resizedRef.current = false;
+          return;
+        }
+        if (!temp) openDetail(block.item_id, toRect(e.currentTarget.getBoundingClientRect()));
+      }}
       style={{
         position: 'absolute', top: (startMin / 60) * HOUR_PX + 1, height: Math.max(height - 2, 10),
         left: `calc(${(lane / lanes) * 100}% + 2px)`, width: `calc(${100 / lanes}% - 4px)`,
