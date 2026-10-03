@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 import { ApiProvider } from '../api/ApiProvider';
+import { DndProvider } from '../dnd/DndProvider';
 import { createFakeApi, type FakeApi } from './fakeApi';
 
 export function createTestQueryClient() {
@@ -14,7 +15,9 @@ export function createWrapper(api: FakeApi = createFakeApi()) {
   const qc = createTestQueryClient();
   const wrapper = ({ children }: { children: ReactNode }) => (
     <ApiProvider client={api}>
-      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      <QueryClientProvider client={qc}>
+        <DndProvider>{children}</DndProvider>
+      </QueryClientProvider>
     </ApiProvider>
   );
   return { wrapper, qc, api };
