@@ -66,6 +66,16 @@ paths:
       responses:
         '204': { description: Deleted }
         '404': { $ref: '#/components/responses/Error' }
+  /items/{id}/unschedule:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      operationId: unscheduleItem
+      description: >
+        Takes the item off the plan in one transaction: deletes all of its work blocks and clears
+        open_at and deadline_at. The item itself (title, description, status) is kept.
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Item' } } } }
+        '404': { $ref: '#/components/responses/Error' }
   /work-blocks:
     post:
       operationId: createWorkBlock
@@ -164,7 +174,7 @@ components:
             field: { type: string }
     Item:
       type: object
-      required: [id, title, description, open_at, deadline_at, status, work_block_count, created_at, updated_at, completed_at]
+      required: [id, title, description, open_at, deadline_at, status, work_block_count, scheduled_minutes, created_at, updated_at, completed_at]
       properties:
         id: { type: string, format: uuid }
         title: { type: string, minLength: 1, maxLength: 500 }
@@ -173,6 +183,7 @@ components:
         deadline_at: { type: [string, 'null'], format: date-time }
         status: { type: string, enum: [active, completed] }
         work_block_count: { type: integer, minimum: 0 }
+        scheduled_minutes: { type: integer, minimum: 0, description: Total length of the item's work blocks. }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         completed_at: { type: [string, 'null'], format: date-time }
@@ -263,10 +274,24 @@ components:
               properties:
                 type: { const: dropbox }
                 config:
-                  type: object
-                  required: [filter]
-                  additionalProperties: false
-                  properties: { filter: { type: string, enum: [all, scheduled, unscheduled, completed] } }
+                  description: >
+                    sections lists which of the task list's sections are shown (1-3, no repeats).
+                    The legacy {filter} shape is still accepted for stored workspaces; clients write sections.
+                  oneOf:
+                    - type: object
+                      required: [sections]
+                      additionalProperties: false
+                      properties:
+                        sections:
+                          type: array
+                          minItems: 1
+                          maxItems: 3
+                          uniqueItems: true
+                          items: { type: string, enum: [scheduled, unscheduled, completed] }
+                    - type: object
+                      required: [filter]
+                      additionalProperties: false
+                      properties: { filter: { type: string, enum: [all, scheduled, unscheduled, completed] } }
             - type: object
               required: [type, config]
               additionalProperties: false

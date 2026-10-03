@@ -40,6 +40,7 @@ func New(st *store.Store, a auth.Authenticator, opts Options) http.Handler {
 	api.HandleFunc("GET /api/v1/items/{id}", s.getItem)
 	api.HandleFunc("PATCH /api/v1/items/{id}", s.patchItem)
 	api.HandleFunc("DELETE /api/v1/items/{id}", s.deleteItem)
+	api.HandleFunc("POST /api/v1/items/{id}/unschedule", s.unscheduleItem)
 	s.registerWorkBlocks(api)
 	s.registerWorkspace(api)
 

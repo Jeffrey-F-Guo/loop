@@ -12,17 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const countWorkBlocks = `-- name: CountWorkBlocks :one
-SELECT count(*)::int FROM work_blocks WHERE item_id = $1
-`
-
-func (q *Queries) CountWorkBlocks(ctx context.Context, itemID uuid.UUID) (int32, error) {
-	row := q.db.QueryRow(ctx, countWorkBlocks, itemID)
-	var column_1 int32
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const createItem = `-- name: CreateItem :one
 INSERT INTO items (user_id, title, description, open_at, deadline_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -79,7 +68,8 @@ func (q *Queries) DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, 
 }
 
 const getItem = `-- name: GetItem :one
-SELECT i.id, i.user_id, i.title, i.description, i.open_at, i.deadline_at, i.status, i.created_at, i.updated_at, i.completed_at, (SELECT count(*) FROM work_blocks w WHERE w.item_id = i.id)::int AS work_block_count
+SELECT i.id, i.user_id, i.title, i.description, i.open_at, i.deadline_at, i.status, i.created_at, i.updated_at, i.completed_at, (SELECT count(*) FROM work_blocks w WHERE w.item_id = i.id)::int AS work_block_count,
+       (SELECT COALESCE(sum(EXTRACT(EPOCH FROM w.end_at - w.start_at)), 0) / 60 FROM work_blocks w WHERE w.item_id = i.id)::int AS scheduled_minutes
 FROM items i
 WHERE i.id = $1 AND i.user_id = $2
 `
@@ -90,17 +80,18 @@ type GetItemParams struct {
 }
 
 type GetItemRow struct {
-	ID             uuid.UUID
-	UserID         uuid.UUID
-	Title          string
-	Description    *string
-	OpenAt         *time.Time
-	DeadlineAt     *time.Time
-	Status         string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	CompletedAt    *time.Time
-	WorkBlockCount int32
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	Title            string
+	Description      *string
+	OpenAt           *time.Time
+	DeadlineAt       *time.Time
+	Status           string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	CompletedAt      *time.Time
+	WorkBlockCount   int32
+	ScheduledMinutes int32
 }
 
 func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (GetItemRow, error) {
@@ -118,7 +109,26 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (GetItemRow, e
 		&i.UpdatedAt,
 		&i.CompletedAt,
 		&i.WorkBlockCount,
+		&i.ScheduledMinutes,
 	)
+	return i, err
+}
+
+const itemBlockStats = `-- name: ItemBlockStats :one
+SELECT count(*)::int AS work_block_count,
+       (COALESCE(sum(EXTRACT(EPOCH FROM end_at - start_at)), 0) / 60)::int AS scheduled_minutes
+FROM work_blocks WHERE item_id = $1
+`
+
+type ItemBlockStatsRow struct {
+	WorkBlockCount   int32
+	ScheduledMinutes int32
+}
+
+func (q *Queries) ItemBlockStats(ctx context.Context, itemID uuid.UUID) (ItemBlockStatsRow, error) {
+	row := q.db.QueryRow(ctx, itemBlockStats, itemID)
+	var i ItemBlockStatsRow
+	err := row.Scan(&i.WorkBlockCount, &i.ScheduledMinutes)
 	return i, err
 }
 
@@ -139,7 +149,8 @@ func (q *Queries) ItemExists(ctx context.Context, arg ItemExistsParams) (bool, e
 }
 
 const listItems = `-- name: ListItems :many
-SELECT i.id, i.user_id, i.title, i.description, i.open_at, i.deadline_at, i.status, i.created_at, i.updated_at, i.completed_at, (SELECT count(*) FROM work_blocks w WHERE w.item_id = i.id)::int AS work_block_count
+SELECT i.id, i.user_id, i.title, i.description, i.open_at, i.deadline_at, i.status, i.created_at, i.updated_at, i.completed_at, (SELECT count(*) FROM work_blocks w WHERE w.item_id = i.id)::int AS work_block_count,
+       (SELECT COALESCE(sum(EXTRACT(EPOCH FROM w.end_at - w.start_at)), 0) / 60 FROM work_blocks w WHERE w.item_id = i.id)::int AS scheduled_minutes
 FROM items i
 WHERE i.user_id = $1
   AND ($2::text IS NULL OR i.status = $2::text)
@@ -155,17 +166,18 @@ type ListItemsParams struct {
 }
 
 type ListItemsRow struct {
-	ID             uuid.UUID
-	UserID         uuid.UUID
-	Title          string
-	Description    *string
-	OpenAt         *time.Time
-	DeadlineAt     *time.Time
-	Status         string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	CompletedAt    *time.Time
-	WorkBlockCount int32
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	Title            string
+	Description      *string
+	OpenAt           *time.Time
+	DeadlineAt       *time.Time
+	Status           string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	CompletedAt      *time.Time
+	WorkBlockCount   int32
+	ScheduledMinutes int32
 }
 
 func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]ListItemsRow, error) {
@@ -189,6 +201,7 @@ func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]ListIte
 			&i.UpdatedAt,
 			&i.CompletedAt,
 			&i.WorkBlockCount,
+			&i.ScheduledMinutes,
 		); err != nil {
 			return nil, err
 		}

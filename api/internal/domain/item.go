@@ -26,9 +26,11 @@ type Item struct {
 	DeadlineAt     *time.Time `json:"deadline_at"`
 	Status         ItemStatus `json:"status"`
 	WorkBlockCount int        `json:"work_block_count"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	CompletedAt    *time.Time `json:"completed_at"`
+	// ScheduledMinutes is the total length of the item's work blocks.
+	ScheduledMinutes int        `json:"scheduled_minutes"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	CompletedAt      *time.Time `json:"completed_at"`
 }
 
 type NewItem struct {

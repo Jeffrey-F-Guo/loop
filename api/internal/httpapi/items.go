@@ -103,6 +103,22 @@ func (s *Server) patchItem(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, it)
 }
 
+// unscheduleItem takes an item off the Timeline and Calendar (clears its dates and
+// deletes its work blocks); the item itself stays in the task list.
+func (s *Server) unscheduleItem(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	it, err := s.store.UnscheduleItem(r.Context(), userOf(r), id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, it)
+}
+
 func (s *Server) deleteItem(w http.ResponseWriter, r *http.Request) {
 	id, err := pathID(r)
 	if err != nil {

@@ -148,17 +148,33 @@ func validateView(raw json.RawMessage) error {
 	}
 	switch vi.Type {
 	case "dropbox":
+		// sections: which of the three lists are shown. filter is the pre-sections shape,
+		// still accepted so stored workspaces keep loading; the app rewrites it as sections.
 		var c struct {
-			Filter string `json:"filter"`
+			Filter   *string   `json:"filter"`
+			Sections *[]string `json:"sections"`
 		}
-		if strictDecode(vi.Config, &c) != nil {
+		if strictDecode(vi.Config, &c) != nil || (c.Filter == nil) == (c.Sections == nil) {
 			return layoutErr("dropbox config is malformed")
 		}
-		switch c.Filter {
-		case "all", "scheduled", "unscheduled", "completed":
-			return nil
+		if c.Filter != nil {
+			switch *c.Filter {
+			case "all", "scheduled", "unscheduled", "completed":
+				return nil
+			}
+			return layoutErr("dropbox filter is invalid")
 		}
-		return layoutErr("dropbox filter is invalid")
+		seen := map[string]bool{}
+		for _, s := range *c.Sections {
+			if (s != "scheduled" && s != "unscheduled" && s != "completed") || seen[s] {
+				return layoutErr("dropbox sections are invalid")
+			}
+			seen[s] = true
+		}
+		if len(seen) == 0 {
+			return layoutErr("dropbox needs at least one section")
+		}
+		return nil
 	case "timeline":
 		var c struct{}
 		if strictDecode(vi.Config, &c) != nil {

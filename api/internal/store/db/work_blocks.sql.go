@@ -45,6 +45,20 @@ func (q *Queries) CreateWorkBlock(ctx context.Context, arg CreateWorkBlockParams
 	return i, err
 }
 
+const deleteItemWorkBlocks = `-- name: DeleteItemWorkBlocks :exec
+DELETE FROM work_blocks WHERE item_id = $1 AND user_id = $2
+`
+
+type DeleteItemWorkBlocksParams struct {
+	ItemID uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) DeleteItemWorkBlocks(ctx context.Context, arg DeleteItemWorkBlocksParams) error {
+	_, err := q.db.Exec(ctx, deleteItemWorkBlocks, arg.ItemID, arg.UserID)
+	return err
+}
+
 const deleteWorkBlock = `-- name: DeleteWorkBlock :execrows
 DELETE FROM work_blocks WHERE id = $1 AND user_id = $2
 `

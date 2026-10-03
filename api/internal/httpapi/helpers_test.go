@@ -87,6 +87,7 @@ type apiItem struct {
 	DeadlineAt     *string `json:"deadline_at"`
 	Status         string  `json:"status"`
 	WorkBlockCount int     `json:"work_block_count"`
+	ScheduledMins  int     `json:"scheduled_minutes"`
 	CompletedAt    *string `json:"completed_at"`
 }
 

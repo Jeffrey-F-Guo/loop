@@ -4,12 +4,14 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: GetItem :one
-SELECT i.*, (SELECT count(*) FROM work_blocks w WHERE w.item_id = i.id)::int AS work_block_count
+SELECT i.*, (SELECT count(*) FROM work_blocks w WHERE w.item_id = i.id)::int AS work_block_count,
+       (SELECT COALESCE(sum(EXTRACT(EPOCH FROM w.end_at - w.start_at)), 0) / 60 FROM work_blocks w WHERE w.item_id = i.id)::int AS scheduled_minutes
 FROM items i
 WHERE i.id = $1 AND i.user_id = $2;
 
 -- name: ListItems :many
-SELECT i.*, (SELECT count(*) FROM work_blocks w WHERE w.item_id = i.id)::int AS work_block_count
+SELECT i.*, (SELECT count(*) FROM work_blocks w WHERE w.item_id = i.id)::int AS work_block_count,
+       (SELECT COALESCE(sum(EXTRACT(EPOCH FROM w.end_at - w.start_at)), 0) / 60 FROM work_blocks w WHERE w.item_id = i.id)::int AS scheduled_minutes
 FROM items i
 WHERE i.user_id = @user_id
   AND (sqlc.narg('status')::text IS NULL OR i.status = sqlc.narg('status')::text)
@@ -27,8 +29,10 @@ SET title = $3, description = $4, open_at = $5, deadline_at = $6,
 WHERE id = $1 AND user_id = $2
 RETURNING *;
 
--- name: CountWorkBlocks :one
-SELECT count(*)::int FROM work_blocks WHERE item_id = $1;
+-- name: ItemBlockStats :one
+SELECT count(*)::int AS work_block_count,
+       (COALESCE(sum(EXTRACT(EPOCH FROM end_at - start_at)), 0) / 60)::int AS scheduled_minutes
+FROM work_blocks WHERE item_id = $1;
 
 -- name: DeleteItem :execrows
 DELETE FROM items WHERE id = $1 AND user_id = $2;

@@ -28,3 +28,6 @@ DELETE FROM work_blocks WHERE id = $1 AND user_id = $2;
 
 -- name: LockItemWorkBlocks :many
 SELECT * FROM work_blocks WHERE item_id = $1 AND user_id = $2 ORDER BY start_at, id FOR UPDATE;
+
+-- name: DeleteItemWorkBlocks :exec
+DELETE FROM work_blocks WHERE item_id = $1 AND user_id = $2;

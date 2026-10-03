@@ -67,12 +67,16 @@ func utc(t *time.Time) *time.Time {
 	return &u
 }
 
-func itemFrom(i db.Item, count int32) domain.Item {
+// blockStats is what an item row carries about its work blocks.
+type blockStats struct{ count, minutes int32 }
+
+func itemFrom(i db.Item, st blockStats) domain.Item {
 	return domain.Item{
 		ID: i.ID, UserID: i.UserID, Title: i.Title, Description: i.Description,
 		OpenAt: utc(i.OpenAt), DeadlineAt: utc(i.DeadlineAt),
-		Status: domain.ItemStatus(i.Status), WorkBlockCount: int(count),
-		CreatedAt: i.CreatedAt.UTC(), UpdatedAt: i.UpdatedAt.UTC(), CompletedAt: utc(i.CompletedAt),
+		Status: domain.ItemStatus(i.Status), WorkBlockCount: int(st.count),
+		ScheduledMinutes: int(st.minutes),
+		CreatedAt:        i.CreatedAt.UTC(), UpdatedAt: i.UpdatedAt.UTC(), CompletedAt: utc(i.CompletedAt),
 	}
 }
 
@@ -91,7 +95,7 @@ func (s *Store) CreateItem(ctx context.Context, userID uuid.UUID, n domain.NewIt
 	if err != nil {
 		return domain.Item{}, mapErr(err)
 	}
-	return itemFrom(row, 0), nil
+	return itemFrom(row, blockStats{}), nil
 }
 
 func (s *Store) GetItem(ctx context.Context, userID, id uuid.UUID) (domain.Item, error) {
@@ -103,7 +107,7 @@ func (s *Store) GetItem(ctx context.Context, userID, id uuid.UUID) (domain.Item,
 		ID: r.ID, UserID: r.UserID, Title: r.Title, Description: r.Description, OpenAt: r.OpenAt,
 		DeadlineAt: r.DeadlineAt, Status: r.Status, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		CompletedAt: r.CompletedAt,
-	}, r.WorkBlockCount), nil
+	}, blockStats{r.WorkBlockCount, r.ScheduledMinutes}), nil
 }
 
 func (s *Store) ListItems(ctx context.Context, userID uuid.UUID, f ItemFilter) ([]domain.Item, error) {
@@ -122,7 +126,7 @@ func (s *Store) ListItems(ctx context.Context, userID uuid.UUID, f ItemFilter) (
 			ID: r.ID, UserID: r.UserID, Title: r.Title, Description: r.Description, OpenAt: r.OpenAt,
 			DeadlineAt: r.DeadlineAt, Status: r.Status, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			CompletedAt: r.CompletedAt,
-		}, r.WorkBlockCount))
+		}, blockStats{r.WorkBlockCount, r.ScheduledMinutes}))
 	}
 	return out, nil
 }
@@ -155,7 +159,7 @@ func (s *Store) UpdateItemAndBlocks(ctx context.Context, userID, id uuid.UUID, a
 		for i, r := range rows {
 			blocks[i] = blockFrom(r)
 		}
-		next, nextBlocks, err := apply(itemFrom(cur, 0), blocks)
+		next, nextBlocks, err := apply(itemFrom(cur, blockStats{}), blocks)
 		if err != nil {
 			return err
 		}
@@ -174,11 +178,37 @@ func (s *Store) UpdateItemAndBlocks(ctx context.Context, userID, id uuid.UUID, a
 		if err != nil {
 			return mapErr(err)
 		}
-		count, err := q.CountWorkBlocks(ctx, id)
+		st, err := q.ItemBlockStats(ctx, id)
 		if err != nil {
 			return err
 		}
-		out = itemFrom(row, count)
+		out = itemFrom(row, blockStats{st.WorkBlockCount, st.ScheduledMinutes})
+		return nil
+	})
+	return out, err
+}
+
+// UnscheduleItem takes an item off the plan: it deletes all of the item's work
+// blocks and clears its open and deadline dates, in one transaction.
+func (s *Store) UnscheduleItem(ctx context.Context, userID, id uuid.UUID) (domain.Item, error) {
+	var out domain.Item
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		cur, err := q.LockItem(ctx, db.LockItemParams{ID: id, UserID: userID})
+		if err != nil {
+			return mapErr(err)
+		}
+		if err := q.DeleteItemWorkBlocks(ctx, db.DeleteItemWorkBlocksParams{ItemID: id, UserID: userID}); err != nil {
+			return err
+		}
+		row, err := q.UpdateItem(ctx, db.UpdateItemParams{
+			ID: id, UserID: userID, Title: cur.Title, Description: cur.Description,
+			Status: cur.Status, CompletedAt: cur.CompletedAt,
+		})
+		if err != nil {
+			return mapErr(err)
+		}
+		out = itemFrom(row, blockStats{})
 		return nil
 	})
 	return out, err
