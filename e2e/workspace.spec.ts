@@ -37,3 +37,17 @@ test('views can be moved, resized, closed, and added, and the arrangement surviv
   await expect(page.locator('[data-view-type="dropbox"]')).toHaveCount(1);
   await expect.poll(async () => (await box(page, 'v-timeline')).x).toBeGreaterThan((await box(page, 'v-calendar')).x);
 });
+
+test('the Dropbox filter menu opens inside its panel', async ({ page }) => {
+  await openApp(page);
+  const dropbox = page.getByTestId('panel-v-dropbox');
+  await dropbox.getByTestId('dropbox-filter').click();
+  const panel = (await dropbox.boundingBox())!;
+  for (const f of ['all', 'unscheduled', 'scheduled', 'completed']) {
+    const b = (await page.getByTestId(`dropbox-filter-option-${f}`).boundingBox())!;
+    expect(b.x).toBeGreaterThanOrEqual(panel.x);
+    expect(b.x + b.width).toBeLessThanOrEqual(panel.x + panel.width);
+  }
+  await page.getByTestId('dropbox-filter-option-completed').click({ timeout: 3000 }); // must not be covered
+  await expect(dropbox.getByTestId('dropbox-filter')).toHaveAttribute('data-filter', 'completed');
+});

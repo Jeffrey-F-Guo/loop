@@ -8,6 +8,7 @@ const ORDER: DropboxFilter[] = ['all', 'unscheduled', 'scheduled', 'completed'];
 export function FilterMenu({ value, onChange }: { value: DropboxFilter; onChange: (f: DropboxFilter) => void }) {
   return (
     <Menu
+      align="right" // the trigger sits at the panel's right edge; opening rightward would be clipped
       trigger={({ toggle }) => (
         <button
           data-testid="dropbox-filter"
