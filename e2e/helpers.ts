@@ -23,7 +23,8 @@ type Offset = { x?: number; y?: number };
 
 /** Pointer-driven drag that dnd-kit's PointerSensor recognizes (needs >4px movement first). */
 export async function drag(page: Page, source: Locator, target: Locator, opts: { sourceOffset?: Offset; targetOffset?: Offset } = {}) {
-  await target.scrollIntoViewIfNeeded();
+  // Center the target so the release point is outside dnd-kit's auto-scroll edge bands.
+  await target.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'nearest' }));
   await source.scrollIntoViewIfNeeded();
   const s = (await source.boundingBox())!;
   const t = (await target.boundingBox())!;
@@ -35,7 +36,10 @@ export async function drag(page: Page, source: Locator, target: Locator, opts: {
   await page.mouse.down();
   await page.mouse.move(sx + 8, sy + 8, { steps: 4 });
   await page.mouse.move(tx, ty, { steps: 15 });
-  await page.mouse.move(tx, ty);
+  // dnd-kit may auto-scroll a container while the pointer crosses its edge on the way in.
+  // Re-aim at the target's current position before releasing, as a person following the ghost would.
+  const t2 = (await target.boundingBox())!;
+  await page.mouse.move(t2.x + (opts.targetOffset?.x ?? t2.width / 2), t2.y + (opts.targetOffset?.y ?? t2.height / 2), { steps: 2 });
   await page.mouse.up();
 }
 
