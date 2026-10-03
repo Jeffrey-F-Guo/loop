@@ -1,0 +1,9 @@
+.DS_Store
+.env
+node_modules/
+app/.expo/
+app/dist/
+app/web-build/
+e2e/test-results/
+e2e/playwright-report/
+api/bin/
