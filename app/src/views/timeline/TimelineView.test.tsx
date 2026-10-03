@@ -1,0 +1,81 @@
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createFakeApi, makeItem } from '../../test/fakeApi';
+import { renderWithProviders } from '../../test/render';
+import { TimelineView } from './TimelineView';
+
+const local = (d: number, h = 0, m = 0) => new Date(2026, 9, d, h, m).toISOString();
+const view = <TimelineView viewId="t1" config={{}} setConfig={vi.fn()} />;
+const DAYS_WIDTH = 700; // 100px per day
+
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(2026, 9, 7, 12, 0));
+  const real = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this.dataset.role === 'timeline-days') return { left: 0, top: 0, width: DAYS_WIDTH, height: 300, right: DAYS_WIDTH, bottom: 300, x: 0, y: 0, toJSON() {} } as DOMRect;
+    return real.call(this);
+  });
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+const ranged = () => makeItem({ id: 'i1', title: 'Physics', open_at: local(5), deadline_at: local(9, 23, 59) });
+const lastPatch = (api: ReturnType<typeof createFakeApi>) => [...api.calls].reverse().find((c) => c.method === 'PATCH');
+
+describe('TimelineView', () => {
+  it('renders a bar for Mon → Fri and day columns as drop targets', async () => {
+    renderWithProviders(view, { api: createFakeApi({ items: [ranged()] }) });
+    const bar = await screen.findByTestId('timeline-bar-i1');
+    expect(bar).toHaveAttribute('data-open-date', '2026-10-05');
+    expect(bar).toHaveAttribute('data-deadline-date', '2026-10-09');
+    expect(screen.getByTestId('timeline-day-2026-10-05')).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-day-2026-10-11')).toBeInTheDocument();
+  });
+
+  it('renders a deadline-only item as a marker', async () => {
+    renderWithProviders(view, { api: createFakeApi({ items: [makeItem({ id: 'm', deadline_at: local(8, 23, 59) })] }) });
+    expect(await screen.findByTestId('timeline-marker-m')).toHaveAttribute('data-deadline-date', '2026-10-08');
+  });
+
+  it('shows the empty state and navigates weeks', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderWithProviders(view, { api: createFakeApi({ items: [ranged()] }) });
+    await screen.findByTestId('timeline-bar-i1');
+    await user.click(screen.getByTestId('timeline-next'));
+    expect(screen.queryByTestId('timeline-bar-i1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('timeline-empty')).toHaveTextContent('No dated Items in this period.');
+    await user.click(screen.getByTestId('timeline-today'));
+    expect(screen.getByTestId('timeline-bar-i1')).toBeInTheDocument();
+  });
+
+  it('dragging the right edge to Sunday moves only the deadline', async () => {
+    const { api } = renderWithProviders(view, { api: createFakeApi({ items: [ranged()] }) });
+    const handle = await screen.findByTestId('timeline-bar-right-i1');
+    fireEvent.pointerDown(handle, { clientX: 450, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 650, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 650, pointerId: 1 });
+    await waitFor(() => expect(lastPatch(api)?.body).toEqual({ deadline_at: local(11, 23, 59) }));
+  });
+
+  it('dragging the left edge past the deadline clamps to a one-day range', async () => {
+    const { api } = renderWithProviders(view, { api: createFakeApi({ items: [ranged()] }) });
+    const handle = await screen.findByTestId('timeline-bar-left-i1');
+    fireEvent.pointerDown(handle, { clientX: 50, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 690, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 690, pointerId: 1 });
+    await waitFor(() => expect(lastPatch(api)?.body).toEqual({ open_at: local(9) }));
+  });
+
+  it('an edge released on its own day sends nothing', async () => {
+    const { api } = renderWithProviders(view, { api: createFakeApi({ items: [ranged()] }) });
+    const handle = await screen.findByTestId('timeline-bar-right-i1');
+    fireEvent.pointerDown(handle, { clientX: 450, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 460, pointerId: 1 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(lastPatch(api)).toBeUndefined();
+  });
+});
