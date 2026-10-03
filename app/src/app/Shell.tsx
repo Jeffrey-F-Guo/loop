@@ -7,6 +7,7 @@ import { ToastHost } from '../ui/Toast';
 import { ItemDetailHost } from '../views/item/ItemDetailHost';
 import { LayoutContext, useWorkspaceLayout } from '../workspace/useWorkspaceLayout';
 import { Workspace } from '../workspace/Workspace';
+import { AddViewMenu } from './AddViewMenu';
 import { TopBar } from './TopBar';
 
 const isTyping = (t: EventTarget | null) =>
@@ -32,7 +33,7 @@ export function Shell() {
     <LayoutContext.Provider value={layoutApi}>
       <DndProvider onDock={onDock}>
         <View style={{ flex: 1, height: '100%' }}>
-          <TopBar />
+          <TopBar right={<AddViewMenu />} />
           <Workspace />
         </View>
         <ItemDetailHost />

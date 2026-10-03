@@ -1,5 +1,6 @@
 import type { ViewNode } from '../api/types';
 import { tokens } from '../ui/tokens';
+import { PanelMenu } from './PanelMenu';
 import { panelTitle } from './panelTitle';
 import { ViewHost } from './ViewHost';
 
@@ -21,6 +22,7 @@ export function Panel({ node }: { node: ViewNode }) {
         }}
       >
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{panelTitle(node.view)}</span>
+        <PanelMenu viewId={node.id} />
       </div>
       <div data-drop-clip style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <ViewHost node={node} />
